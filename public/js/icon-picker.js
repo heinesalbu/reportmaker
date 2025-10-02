@@ -1,12 +1,36 @@
 /**
- * Font Awesome Icon Picker (Version 6 - Visual Polish)
+ * Font Awesome Icon Picker (Version 7.1 - Final & Robust)
  *
  * Changes:
- * - Hides the input field's text value for a cleaner look.
- * - Manages a separate placeholder element for better UX.
- * - Added a clear button to remove the selected icon.
+ * - Refactored to correctly handle multiple pickers on the same page.
+ * - Uses a single set of event listeners for the modal, delegating to the active picker.
+ * - This fixes the bug where search only worked for the last instance.
  */
+
+// Create a single, shared promise for the icon data to prevent multiple fetches
+let iconDataPromise = null;
+const fetchIconData = () => {
+    if (!iconDataPromise) {
+        iconDataPromise = fetch('/json/icons.json')
+            .then(response => {
+                if (!response.ok) throw new Error('Network response for icons.json was not ok');
+                return response.json();
+            })
+            .then(data => {
+                return Object.entries(data).flatMap(([key, value]) =>
+                    value.styles.map(style => ({
+                        id: key, style: style, prefix: style === 'brands' ? 'fab' : (style === 'regular' ? 'far' : 'fas')
+                    }))
+                );
+            });
+    }
+    return iconDataPromise;
+};
+
 class IconPicker {
+    // Static property to track the currently active picker instance
+    static activeInstance = null;
+
     constructor(triggerElement) {
         if (!triggerElement) return;
 
@@ -15,12 +39,7 @@ class IconPicker {
         this.iconPreview = triggerElement.querySelector('[data-preview-for="' + this.input.id + '"]');
         this.placeholder = triggerElement.querySelector('.icon-picker-placeholder');
         this.clearButton = triggerElement.querySelector('.icon-picker-clear');
-
         this.modal = document.getElementById('iconPickerModal');
-        this.searchBox = this.modal.querySelector('#iconSearch');
-        this.iconGrid = this.modal.querySelector('#iconGrid');
-        this.closeButton = this.modal.querySelector('.close');
-        
         this.icons = [];
         this.isLoaded = false;
 
@@ -29,100 +48,111 @@ class IconPicker {
 
     init() {
         this.triggerElement.addEventListener('click', (e) => {
-            // Do not open modal if clear button was clicked
-            if (this.clearButton && e.target === this.clearButton) {
+            if (this.clearButton && (e.target === this.clearButton || e.target.parentElement === this.clearButton)) {
                 return;
             }
             this.open();
         });
 
-        this.closeButton.addEventListener('click', () => this.close());
-        this.searchBox.addEventListener('input', () => this.filterIcons());
-
         if (this.clearButton) {
             this.clearButton.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent modal from opening
-                this.selectIcon(''); // Select an empty icon
+                e.stopPropagation();
+                this.selectIcon('');
             });
         }
         
-        window.addEventListener('click', (event) => {
-            if (event.target === this.modal) { this.close(); }
-        });
-        
         this.updateVisualState();
+        
+        // One-time setup for global modal events
+        if (!IconPicker.eventsAttached) {
+            const modal = document.getElementById('iconPickerModal');
+            modal.querySelector('.close').addEventListener('click', () => IconPicker.closeActive());
+            modal.querySelector('#iconSearch').addEventListener('input', () => IconPicker.filterActive());
+            window.addEventListener('click', (event) => {
+                if (event.target === modal) { IconPicker.closeActive(); }
+            });
+            IconPicker.eventsAttached = true;
+        }
     }
     
     updateVisualState() {
-        if (!this.input) return;
         const hasValue = this.input.value.trim() !== '';
-        
-        if (this.placeholder) {
-            this.placeholder.style.display = hasValue ? 'none' : 'inline';
-        }
-        if (this.clearButton) {
-            this.clearButton.style.display = hasValue ? 'inline-flex' : 'none';
-        }
+        if (this.placeholder) this.placeholder.style.display = hasValue ? 'none' : 'block';
+        if (this.clearButton) this.clearButton.style.display = hasValue ? 'inline-flex' : 'none';
     }
 
-    // ... open(), close(), loadIcons(), renderIcons(), filterIcons() remain the same ...
     async open() {
+        IconPicker.activeInstance = this;
         this.modal.style.display = 'block';
-        this.searchBox.focus();
-        if (!this.isLoaded) { await this.loadIcons(); }
-        this.searchBox.value = '';
-        this.iconGrid.innerHTML = '<div class="icon-picker-message">Skriv i søkefeltet for å finne ikoner.</div>';
+        this.modal.querySelector('#iconSearch').focus();
+
+        if (!this.isLoaded) {
+            await this.loadIcons();
+        }
+
+        this.modal.querySelector('#iconSearch').value = '';
+        this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message">Skriv i søkefeltet for å finne ikoner.</div>';
     }
-    close() { this.modal.style.display = 'none'; }
+
     async loadIcons() {
         try {
-            this.iconGrid.innerHTML = '<div class="icon-picker-message">Laster inn ikoner...</div>';
-            const response = await fetch('/json/icons.json');
-            if (!response.ok) throw new Error('Network response was not ok');
-            const data = await response.json();
-            this.icons = Object.entries(data).flatMap(([key, value]) =>
-                value.styles.map(style => ({
-                    id: key, style: style, prefix: style === 'brands' ? 'fab' : (style === 'regular' ? 'far' : 'fas')
-                }))
-            );
+            this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message">Laster inn ikoner...</div>';
+            this.icons = await fetchIconData();
             this.isLoaded = true;
-            this.iconGrid.innerHTML = '<div class="icon-picker-message">Klar til å søke.</div>';
+            this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message">Klar til å søke.</div>';
         } catch (error) {
-            this.iconGrid.innerHTML = '<div class="icon-picker-message error"><strong>Feil:</strong> Kunne ikke laste <code>/json/icons.json</code>.</div>';
+            this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message error"><strong>Feil:</strong> Kunne ikke laste <code>/json/icons.json</code>.</div>';
             console.error('Error loading Font Awesome icons:', error);
         }
     }
-    renderIcons(iconsToRender) {
-        this.iconGrid.innerHTML = '';
-        if (iconsToRender.length === 0) {
-            this.iconGrid.innerHTML = '<div class="icon-picker-message">Ingen ikoner matchet søket.</div>';
+    
+    selectIcon(iconClass) {
+        this.input.value = iconClass;
+        this.iconPreview.className = iconClass;
+        this.updateVisualState();
+        IconPicker.closeActive();
+    }
+
+    // Static methods that operate on the active instance
+    static closeActive() {
+        if (IconPicker.activeInstance) {
+            IconPicker.activeInstance.modal.style.display = 'none';
+            IconPicker.activeInstance = null;
+        }
+    }
+
+    static filterActive() {
+        if (!IconPicker.activeInstance) return;
+
+        const instance = IconPicker.activeInstance;
+        const query = instance.modal.querySelector('#iconSearch').value.toLowerCase().trim();
+        const grid = instance.modal.querySelector('#iconGrid');
+
+        if (!instance.isLoaded) return;
+
+        if (query.length < 2) {
+            grid.innerHTML = '<div class="icon-picker-message">Skriv minst 2 tegn for å søke.</div>';
             return;
         }
-        const cappedIcons = iconsToRender.slice(0, 200);
-        cappedIcons.forEach(icon => {
+
+        const filtered = instance.icons.filter(icon => icon.id.includes(query));
+        
+        grid.innerHTML = '';
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div class="icon-picker-message">Ingen ikoner matchet søket.</div>';
+            return;
+        }
+        
+        filtered.slice(0, 200).forEach(icon => {
             const iconElement = document.createElement('div');
             iconElement.className = 'icon-item';
             const fullClass = `${icon.prefix} fa-${icon.id}`;
             iconElement.innerHTML = `<i class="${fullClass}"></i>`;
             iconElement.title = icon.id;
-            iconElement.addEventListener('click', () => { this.selectIcon(fullClass); });
-            this.iconGrid.appendChild(iconElement);
+            iconElement.addEventListener('click', () => {
+                instance.selectIcon(fullClass);
+            });
+            grid.appendChild(iconElement);
         });
-    }
-    filterIcons() {
-        const query = this.searchBox.value.toLowerCase().trim();
-        if (query.length < 2) {
-            this.iconGrid.innerHTML = '<div class="icon-picker-message">Skriv minst 2 tegn for å søke.</div>';
-            return;
-        }
-        const filtered = this.icons.filter(icon => icon.id.includes(query));
-        this.renderIcons(filtered);
-    }
-    
-    selectIcon(iconClass) {
-        if (this.input) { this.input.value = iconClass; }
-        if (this.iconPreview) { this.iconPreview.className = iconClass; }
-        this.updateVisualState();
-        this.close();
     }
 }
