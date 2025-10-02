@@ -38,4 +38,14 @@ class SectionController extends Controller
         $section->delete();
         return redirect()->route('sections.index')->with('ok','Seksjon slettet');
     }
+    public function reorder(Request $request)
+    {
+        $order = $request->input('order', []);
+        
+        foreach ($order as $item) {
+            \App\Models\Section::where('id', $item['id'])->update(['order' => $item['order']]);
+        }
+        
+        return response()->json(['success' => true]);
+    }
 }

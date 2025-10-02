@@ -154,11 +154,13 @@
                     @foreach($blocks as $b)
                         @php
                             $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
+                            $templateBlock = $templateBlocks->get($b->id);
+                            
                             $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
-                            $overrideLabel = old("blocks.{$b->id}.override_label", $projectBlock?->override_label ?? '');
-                            $overrideIcon = old("blocks.{$b->id}.override_icon", $projectBlock?->override_icon ?? '');
-                            $overrideText = old("blocks.{$b->id}.override_text", $projectBlock?->override_text ?? '');
-                            $overrideTips = old("blocks.{$b->id}.override_tips", is_array($projectBlock?->override_tips) ? implode(', ', $projectBlock->override_tips) : ($projectBlock?->override_tips ?? ''));
+                            $overrideLabel = old("blocks.{$b->id}.override_label", $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
+                            $overrideIcon = old("blocks.{$b->id}.override_icon", $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
+                            $overrideText = old("blocks.{$b->id}.override_text", $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
+                            $overrideTips = old("blocks.{$b->id}.override_tips", is_array($projectBlock?->override_tips) ? implode(', ', $projectBlock->override_tips) : ($projectBlock?->override_tips ?? (is_array($templateBlock?->tips_override) ? implode(', ', $templateBlock->tips_override) : '')));
                         @endphp
                         <div class="finding-block">
                             <div class="finding-block-main">

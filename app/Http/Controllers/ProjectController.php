@@ -119,40 +119,50 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('ok','Prosjekt slettet');
     }
 
-// in app/Http/Controllers/ProjectController.php
 
-public function findings(Project $project)
-{
-    // 1. Sjekk at prosjektet har en mal tilknyttet
-    if (!$project->template_id) {
-        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
+
+    public function findings(Project $project)
+    {
+        $project->load('projectBlocks');
+
+        $allBlocks = \App\Models\Block::with('section')
+            ->whereHas('section.templates', function ($query) use ($project) {
+                $query->where('template_id', $project->template_id);
+            })
+            ->orderBy('section_id')
+            ->orderBy('order')
+            ->get();
+
+        // Hent malens overrides
+        $templateSections = collect();
+        $templateBlocks = collect();
+        if ($project->template_id) {
+            $templateSections = \App\Models\TemplateSection::where('template_id', $project->template_id)
+                ->get()->keyBy('section_id');
+            $templateBlocks = \App\Models\TemplateBlock::where('template_id', $project->template_id)
+                ->get()->keyBy('block_id');
+        }
+
+        // Grupper og anvend overrides på blokkene
+        $grouped = $allBlocks->groupBy('section_id');
+        $groupedBlocks = collect();
+        
+        foreach ($grouped as $sectionId => $blocks) {
+            $firstBlock = $blocks->first();
+            $section = $firstBlock->section;
+            
+            $ts = $templateSections->get($sectionId);
+            $sectionLabel = $ts && $ts->title_override ? $ts->title_override : $section->label;
+            
+            $groupedBlocks->put($sectionLabel, $blocks);
+        }
+
+        return view('projects.findings', [
+            'project' => $project,
+            'groupedBlocks' => $groupedBlocks,
+            'templateBlocks' => $templateBlocks, // Send til view
+        ]);
     }
-
-    // 2. Eager-load eksisterende valg for god ytelse
-    $project->load('projectBlocks');
-
-    // 3. Hent de korrekte SEKSJONENE i riktig rekkefølge,
-    //    og eager-load deres tilhørende blokker (også sortert)
-    $orderedSections = \App\Models\Section::orderBy('order', 'asc')
-        ->whereHas('templates', function ($query) use ($project) {
-            $query->where('template_id', $project->template_id);
-        })
-        ->with(['blocks' => function ($query) {
-            $query->orderBy('order', 'asc');
-        }])
-        ->get();
-
-    // 4. Transformer de sorterte seksjonene til den datastrukturen viewet forventer
-    $groupedBlocks = $orderedSections->mapWithKeys(function ($section) {
-        return [$section->label => $section->blocks];
-    });
-
-    // 5. Send den korrekt sorterte dataen til viewet
-    return view('projects.findings', [
-        'project' => $project,
-        'groupedBlocks' => $groupedBlocks,
-    ]);
-}
 
     public function saveFindings(Request $request, Project $project)
     {
@@ -192,34 +202,40 @@ public function findings(Project $project)
 
     public function reportPreview(Project $project)
     {
-        // 1) Seksjoner + blokker i stabil rekkefølge
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
 
-        // 2) Firma-info
         $company = $this->companyInfo();
-
-        // 3) Prosjektets valg (pivot) - EAGER LOAD
         $project->load('projectBlocks');
         $pb = $project->projectBlocks->keyBy('block_id');
 
-        // 4) Bygg rapportseksjoner kun fra valgte blokker
+        // Hent malens overrides
+        $templateSections = collect();
+        $templateBlocks = collect();
+        if ($project->template_id) {
+            $templateSections = \App\Models\TemplateSection::where('template_id', $project->template_id)
+                ->get()->keyBy('section_id');
+            $templateBlocks = \App\Models\TemplateBlock::where('template_id', $project->template_id)
+                ->get()->keyBy('block_id');
+        }
+
         $reportSections = [];
         foreach ($sections as $s) {
             $chosen = [];
             foreach ($s->blocks as $b) {
                 $row = $pb->get($b->id);
-                if (!$row || !$row->selected) {
-                    continue; // ikke valgt i prosjektet
-                }
+                if (!$row || !$row->selected) continue;
+
+                // Hent mal-overrides for denne blokken
+                $tb = $templateBlocks->get($b->id);
 
                 $chosen[] = [
-                    'icon'     => $row->override_icon ?: $b->icon,
-                    'label'    => $row->override_label ?: $b->label,
+                    'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
+                    'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
                     'severity' => $b->severity,
-                    'text'     => $row->override_text ?: $b->default_text,
-                    'tips'     => $row->override_tips ?? $b->tips ?? null,
+                    'text'     => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
+                    'tips'     => $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips),
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
@@ -228,8 +244,12 @@ public function findings(Project $project)
 
             if ($chosen) {
                 usort($chosen, fn($a,$b) => $a['_order'] <=> $b['_order'] ?: strcmp($a['label'],$b['label']));
+                
+                $ts = $templateSections->get($s->id);
+                $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
+                
                 $reportSections[] = [
-                    'title'  => $s->label,
+                    'title'  => $sectionTitle,
                     'blocks' => $chosen,
                     '_order' => (int)($s->order ?? 0),
                 ];
@@ -247,34 +267,40 @@ public function findings(Project $project)
 
     public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf)
     {
-        // 1) Seksjoner + blokker i stabil rekkefølge
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
 
-        // 2) Firma-info
         $company = $this->companyInfo();
-
-        // 3) Prosjektets valg (pivot) - EAGER LOAD
         $project->load('projectBlocks');
         $pb = $project->projectBlocks->keyBy('block_id');
 
-        // 4) Bygg rapportseksjoner kun fra valgte blokker
+        // Hent malens overrides
+        $templateSections = collect();
+        $templateBlocks = collect();
+        if ($project->template_id) {
+            $templateSections = \App\Models\TemplateSection::where('template_id', $project->template_id)
+                ->get()->keyBy('section_id');
+            $templateBlocks = \App\Models\TemplateBlock::where('template_id', $project->template_id)
+                ->get()->keyBy('block_id');
+        }
+
         $reportSections = [];
         foreach ($sections as $s) {
             $chosen = [];
             foreach ($s->blocks as $b) {
                 $row = $pb->get($b->id);
-                if (!$row || !$row->selected) {
-                    continue; // ikke valgt i prosjektet
-                }
+                if (!$row || !$row->selected) continue;
+
+                // Hent mal-overrides for denne blokken
+                $tb = $templateBlocks->get($b->id);
 
                 $chosen[] = [
-                    'icon'     => $row->override_icon ?: $b->icon,
-                    'label'    => $row->override_label ?: $b->label,
+                    'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
+                    'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
                     'severity' => $b->severity,
-                    'text'     => $row->override_text ?: $b->default_text,
-                    'tips'     => $row->override_tips ?? $b->tips ?? null,
+                    'text'     => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
+                    'tips'     => $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips),
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
@@ -283,8 +309,12 @@ public function findings(Project $project)
 
             if ($chosen) {
                 usort($chosen, fn($a,$b) => $a['_order'] <=> $b['_order'] ?: strcmp($a['label'],$b['label']));
+                
+                $ts = $templateSections->get($s->id);
+                $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
+                
                 $reportSections[] = [
-                    'title'  => $s->label,
+                    'title'  => $sectionTitle,
                     'blocks' => $chosen,
                     '_order' => (int)($s->order ?? 0),
                 ];
@@ -295,18 +325,14 @@ public function findings(Project $project)
 
         $pdfStyles = \App\Models\Setting::where('key', 'pdf_styles')->value('value') ?? [];
 
-
-        // 5) Render HTML -> bytes
         $html = view('reports.pdf', compact(
             'project', 
             'reportSections', 
             'company', 
             'pdfStyles'))->render();
 
-
         $out = $pdf->renderBytes($html, public_path(), []);
 
-        // 6) Filnavn
         $customer = optional($project->customer)->name ?: 'kunde';
         $basename = $this->safeFilename($customer.' - '.$project->title.' - '.now()->format('Y-m-d'));
         $ext = $out['mime'] === 'application/pdf' ? 'pdf' : 'html';
@@ -316,9 +342,6 @@ public function findings(Project $project)
             'Content-Disposition' => 'attachment; filename="'.$basename.'.'.$ext.'"',
         ]);
     }
-
-
-
     public function applyTemplate(Request $request, Project $project)
     {
         $templateId = $request->input('template_id') ?: $project->template_id;
@@ -425,9 +448,6 @@ public function findings(Project $project)
             return back()->with('error', 'Aktivering feilet: '.$e->getMessage());
         }
     }
-
-
-
     private function companyInfo(): array
     {
         return [

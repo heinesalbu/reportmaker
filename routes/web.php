@@ -76,3 +76,4 @@ Route::get('/settings/pdf', [SettingsController::class, 'pdf'])->name('settings.
 Route::post('/settings/pdf', [SettingsController::class, 'savePdf'])->name('settings.pdf.save');
 
 Route::post('/blocks/reorder', [BlockController::class, 'reorder'])->name('blocks.reorder');
+Route::post('/sections/reorder', [SectionController::class, 'reorder'])->name('sections.reorder');
