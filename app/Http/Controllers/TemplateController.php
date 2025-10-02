@@ -7,6 +7,7 @@ use App\Models\Block;
 use App\Models\TemplateSection;
 use App\Models\TemplateBlock;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class TemplateController extends Controller
 {
@@ -23,13 +24,31 @@ class TemplateController extends Controller
 
     public function store(Request $r)
     {
+        // Valider bare navn og beskrivelse – nøkkel genereres automatisk
         $data = $r->validate([
-            'key' => 'required|string|max:100|unique:templates,key',
-            'name' => 'required|string|max:255',
+            'name'        => 'required|string|max:255',
             'description' => 'nullable|string',
         ]);
-        $template = Template::create($data);
-        return redirect()->route('templates.edit',$template)->with('ok','Mal opprettet – nå kan du velge seksjoner/blokker.');
+
+        // Generer key fra navn (bruk underscores i stedet for bindestrek)
+        $key = Str::slug($data['name'], '_');
+
+        // Kontroller at nøkkelen er unik i templates-tabellen
+        $query = Template::where('key', $key);
+        if ($query->exists()) {
+            // Hvis den allerede finnes, legg til et kort random-suffiks
+            $key .= '_' . strtolower(Str::random(4));
+        }
+
+        // Opprett malen med generert nøkkel
+        $template = Template::create([
+            'key'         => $key,
+            'name'        => $data['name'],
+            'description' => $data['description'] ?? null,
+        ]);
+
+        return redirect()->route('templates.edit', $template)
+            ->with('ok', 'Mal opprettet – nå kan du velge seksjoner/blokker.');
     }
 
     public function edit(Template $template)

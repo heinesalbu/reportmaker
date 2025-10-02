@@ -22,7 +22,7 @@
     <tr>
       <th></th>
       <th>Seksjon</th>
-      <th>Nøkkel</th>
+      
       <th>Tittel</th>
       <th>Sev</th>
       <th>Vis som standard</th>
@@ -41,7 +41,7 @@
     <tr data-id="{{ $b->id }}" data-section="{{ $b->section_id }}">
       <td><span class="drag-handle">⋮⋮</span></td>
       <td>{{ $b->section->label ?? '—' }}</td>
-      <td><code>{{ $b->key }}</code></td>
+      
       <td>{{ $b->label }}</td>
       <td>{{ $b->severity }}</td>
       <td>{{ $b->visible_by_default ? 'Ja' : 'Nei' }}</td>

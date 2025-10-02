@@ -64,17 +64,31 @@
     @if(!$template->exists)
         <form method="post" action="{{ route('templates.store') }}" class="meta-form">
             @csrf
-            <div class="form-row">
-                <div>
-                    <label for="key">Key</label>
-                    <input id="key" name="key" value="{{ old('key') }}" required>
-                </div>
-                <div>
-                    <label for="name">Navn</label>
-                    <input id="name" name="name" value="{{ old('name') }}" required>
-                </div>
-            </div>
-            <div>
+<div class="form-row">
+
+    <div>
+        <label for="name">Navn</label>
+        <input id="name" name="name" value="{{ old('name') }}" required>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const nameInput = document.getElementById('name');
+    const keyInput  = document.getElementById('key');
+    nameInput.addEventListener('input', function () {
+        const slug = this.value
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9_\\s]+/g, '')   // fjern ugyldige tegn
+          .replace(/\\s+/g, '_');           // mellomrom til underscore
+        keyInput.value = slug;
+    });
+});
+</script>
+
+
+
                 <label for="description">Beskrivelse</label>
                 <textarea id="description" name="description" rows="2">{{ old('description') }}</textarea>
             </div>

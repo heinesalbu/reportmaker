@@ -123,46 +123,58 @@ class ProjectController extends Controller
 
     public function findings(Project $project)
     {
+        // Last inn eventuelle eksisterende tilknytninger mellom prosjekt og blokker
         $project->load('projectBlocks');
 
+        // Hent alle blokker for den valgte malen og tilhørende seksjoner
         $allBlocks = \App\Models\Block::with('section')
             ->whereHas('section.templates', function ($query) use ($project) {
                 $query->where('template_id', $project->template_id);
             })
-            ->orderBy('section_id')
+            ->orderBy('section_id') // behold blokkene sortert innenfor hver seksjon
             ->orderBy('order')
             ->get();
 
-        // Hent malens overrides
+        // Hent eventuelle tittel/tekst-overstyringer definert i mal for seksjoner og blokker
         $templateSections = collect();
         $templateBlocks = collect();
         if ($project->template_id) {
             $templateSections = \App\Models\TemplateSection::where('template_id', $project->template_id)
-                ->get()->keyBy('section_id');
+                ->get()
+                ->keyBy('section_id');
             $templateBlocks = \App\Models\TemplateBlock::where('template_id', $project->template_id)
-                ->get()->keyBy('block_id');
+                ->get()
+                ->keyBy('block_id');
         }
 
-        // Grupper og anvend overrides på blokkene
+        // Gruppér blokkene på seksjons-ID
         $grouped = $allBlocks->groupBy('section_id');
+
+        // Sorter seksjonene etter seksjonens 'order' (rekkefølge), ikke bare id
+        $grouped = $grouped->sortBy(function ($blocks, $sectionId) {
+            return optional($blocks->first()->section)->order ?? 0;
+        });
+
+        // Bygg opp en map [seksjonstittel => blokkliste] til bruk i viewet
         $groupedBlocks = collect();
-        
         foreach ($grouped as $sectionId => $blocks) {
             $firstBlock = $blocks->first();
             $section = $firstBlock->section;
-            
+
+            // Sjekk om det finnes title_override i mal for seksjonen
             $ts = $templateSections->get($sectionId);
             $sectionLabel = $ts && $ts->title_override ? $ts->title_override : $section->label;
-            
+
             $groupedBlocks->put($sectionLabel, $blocks);
         }
 
         return view('projects.findings', [
-            'project' => $project,
+            'project'       => $project,
             'groupedBlocks' => $groupedBlocks,
-            'templateBlocks' => $templateBlocks, // Send til view
+            'templateBlocks'=> $templateBlocks, // send også over eventuelle blokk-overstyringer fra malen
         ]);
     }
+
 
     public function saveFindings(Request $request, Project $project)
     {

@@ -6,10 +6,9 @@
   @csrf
   @if($section->exists) @method('PUT') @endif
 
-  <label>Key</label>
-  <input name="key" value="{{ old('key',$section->key) }}" required>
 
-  <label>Label</label>
+
+  <label>Navn</label>
   <input name="label" value="{{ old('label',$section->label) }}" required>
 
   <label>Rekkefølge</label>
