@@ -40,32 +40,6 @@ class BlockController extends Controller
         return redirect()->route('blocks.index')->with('ok','Blokk slettet');
     }
 
-    private function OLD_validated(Request $r, $ignoreId = null, $sectionId = null): array {
-        $sid = $r->input('section_id', $sectionId);
-        return $r->validate([
-            'section_id'         => 'required|exists:sections,id',
-            'key'                => 'required|string|max:100|unique:blocks,key,'.($ignoreId ?? 'NULL').',id,section_id,'.$sid,
-            'label'              => 'required|string|max:255',
-            'order'              => 'nullable|integer|min:0',
-            'icon'               => 'nullable|string|max:16',
-            'severity'           => 'required|in:info,warn,crit',
-            'default_text'       => 'nullable|string',
-            'tips'               => 'nullable|string',   // CSV i UI → parses under
-            'references'         => 'nullable|string',   // CSV i UI → parses under
-            'tags'               => 'nullable|string',   // CSV i UI → parses under
-            'visible_by_default' => 'nullable|boolean',
-        ], [], [
-            'section_id' => 'seksjon',
-            'key'        => 'nøkkel',
-        ]) + [
-            // cast CSV → arrays
-            'tips'       => self::csvToArray($r->input('tips')),
-            'references' => self::csvToArray($r->input('references')),
-            'tags'       => self::csvToArray($r->input('tags')),
-            'visible_by_default' => (bool)$r->boolean('visible_by_default'),
-            'order' => (int)$r->input('order', 0),
-        ];
-    }
     private function validated(Request $r, $ignoreId = null, $sectionId = null): array {
         // Valider alt unntatt nøkkel først
         $data = $r->validate([
@@ -113,4 +87,17 @@ class BlockController extends Controller
         if ($csv === null || trim($csv) === '') return null;
         return array_values(array_filter(array_map('trim', explode(',', $csv))));
     }
+public function reorder(Request $request)
+{
+    $order = $request->input('order', []);
+    
+    \Log::info('Reorder called with data:', $order);
+    
+    foreach ($order as $item) {
+        $updated = \App\Models\Block::where('id', $item['id'])->update(['order' => $item['order']]);
+        \Log::info("Updated block {$item['id']} to order {$item['order']}, rows affected: {$updated}");
+    }
+    
+    return response()->json(['success' => true]);
+}
 }

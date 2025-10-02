@@ -74,3 +74,5 @@ use Illuminate\Http\Request;
 // NYE RUTER FOR PDF-INNSTILLINGER
 Route::get('/settings/pdf', [SettingsController::class, 'pdf'])->name('settings.pdf');
 Route::post('/settings/pdf', [SettingsController::class, 'savePdf'])->name('settings.pdf.save');
+
+Route::post('/blocks/reorder', [BlockController::class, 'reorder'])->name('blocks.reorder');

@@ -16,8 +16,7 @@
   </style>
       <link href="{{ asset('css/all.min.css') }}" rel="stylesheet">
       <link rel="stylesheet" href="https://kit.fontawesome.com/04f12e36ac.css" crossorigin="anonymous">
-
-
+      <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
   <nav>
@@ -35,6 +34,7 @@
 
   @yield('content')
   <script src="{{ asset('js/icon-picker.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
 </body>
 </html>
