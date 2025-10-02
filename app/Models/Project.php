@@ -34,4 +34,9 @@ class Project extends Model
     {
         return $this->belongsTo(\App\Models\Template::class, 'template_id', 'key')->orWhere('template_id', $this->template_id);
     }
+    public function customBlocks()
+    {
+        return $this->hasMany(ProjectCustomBlock::class);
+    }
+
 }

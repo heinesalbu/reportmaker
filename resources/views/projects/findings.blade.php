@@ -39,7 +39,7 @@
     .section-toggle-all-controls { margin-bottom: 1rem; }
     .section-toggle-all-controls button { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 0.25rem 0.75rem; font-size: 0.85rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem; }
     .section-toggle-all-controls button:hover { background-color: #e9ecef; }
-    /* Modal stiler - OPPDATERT */
+    /* Modal stiler */
     .icon-picker-modal { 
         display: none; 
         position: fixed; 

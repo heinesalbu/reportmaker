@@ -14,6 +14,8 @@ use App\Services\PdfRenderer;
 use App\Models\Setting;
 use App\Models\Template;
 use App\Models\TemplateBlock;
+use App\Models\TemplateSection;
+use App\Models\ProjectCustomBlock;
 
 
 
@@ -123,46 +125,50 @@ class ProjectController extends Controller
 
     public function findings(Project $project)
     {
-        // Last inn eventuelle eksisterende tilknytninger mellom prosjekt og blokker
         $project->load('projectBlocks');
 
-        // Hent alle blokker for den valgte malen og tilhørende seksjoner
-        $allBlocks = \App\Models\Block::with('section')
+        // Hent alle standardblokker slik som før...
+        $allBlocks = Block::with('section')
             ->whereHas('section.templates', function ($query) use ($project) {
                 $query->where('template_id', $project->template_id);
             })
-            ->orderBy('section_id') // behold blokkene sortert innenfor hver seksjon
+            ->orderBy('section_id')
             ->orderBy('order')
             ->get();
 
-        // Hent eventuelle tittel/tekst-overstyringer definert i mal for seksjoner og blokker
+        // Hent prosjektets custom blocks gruppert på seksjons-ID
+        $custom = $project->customBlocks()->orderBy('order')->get()->groupBy('section_id');
+
+        // Hent mal-override for titler hvis mal er brukt
         $templateSections = collect();
-        $templateBlocks = collect();
+        $templateBlocks   = collect();
         if ($project->template_id) {
-            $templateSections = \App\Models\TemplateSection::where('template_id', $project->template_id)
-                ->get()
-                ->keyBy('section_id');
-            $templateBlocks = \App\Models\TemplateBlock::where('template_id', $project->template_id)
-                ->get()
-                ->keyBy('block_id');
+            $templateSections = TemplateSection::where('template_id', $project->template_id)
+                ->get()->keyBy('section_id');
+            $templateBlocks = TemplateBlock::where('template_id', $project->template_id)
+                ->get()->keyBy('block_id');
         }
 
-        // Gruppér blokkene på seksjons-ID
-        $grouped = $allBlocks->groupBy('section_id');
-
-        // Sorter seksjonene etter seksjonens 'order' (rekkefølge), ikke bare id
-        $grouped = $grouped->sortBy(function ($blocks, $sectionId) {
+        // Gruppér standardblokker per seksjon og legg på custom blocks
+        $grouped = $allBlocks->groupBy('section_id')->sortBy(function ($blocks) {
             return optional($blocks->first()->section)->order ?? 0;
         });
 
-        // Bygg opp en map [seksjonstittel => blokkliste] til bruk i viewet
         $groupedBlocks = collect();
         foreach ($grouped as $sectionId => $blocks) {
-            $firstBlock = $blocks->first();
-            $section = $firstBlock->section;
+            // legg til ev. custom blocks i enden av dette arrayet
+            if ($custom->has($sectionId)) {
+                foreach ($custom[$sectionId] as $cb) {
+                    // for uniformitet: tilpass custom block til samme struktur som standardblokk
+                    $cb->is_custom = true; // marker som custom
+                    $blocks->push($cb);
+                }
+            }
 
-            // Sjekk om det finnes title_override i mal for seksjonen
-            $ts = $templateSections->get($sectionId);
+            // finn korrekt seksjonstittel (mal-override hvis finnes)
+            $firstBlock = $blocks->first();
+            $section    = $firstBlock->section;
+            $ts         = $templateSections->get($sectionId);
             $sectionLabel = $ts && $ts->title_override ? $ts->title_override : $section->label;
 
             $groupedBlocks->put($sectionLabel, $blocks);
@@ -171,40 +177,50 @@ class ProjectController extends Controller
         return view('projects.findings', [
             'project'       => $project,
             'groupedBlocks' => $groupedBlocks,
-            'templateBlocks'=> $templateBlocks, // send også over eventuelle blokk-overstyringer fra malen
+            'templateBlocks'=> $templateBlocks,
         ]);
     }
 
 
+
     public function saveFindings(Request $request, Project $project)
     {
-        // Valideringsregler for alle felter
-        $rules = [
-            'blocks.*.selected' => 'boolean',
-            'blocks.*.override_label' => 'nullable|string|max:255',
-            'blocks.*.override_icon' => 'nullable|string|max:100',
-            'blocks.*.override_text' => 'nullable|string',
-            'blocks.*.override_tips' => 'nullable|string', // Mottas som kommaseparert
-        ];
-        $data = $request->validate($rules);
+        // eksisterende validering og lagring av standardblokker...
 
-        foreach ($data['blocks'] as $blockId => $blockData) {
-            $project->projectBlocks()->updateOrCreate(
-                ['block_id' => $blockId],
-                [
-                    'selected' => $blockData['selected'] ?? false,
-                    'override_label' => $blockData['override_label'],
-                    'override_icon' => $blockData['override_icon'],
-                    'override_text' => $blockData['override_text'],
-                    // Konverter kommaseparert streng tilbake til en array for lagring
-                    'override_tips' => $blockData['override_tips'] ?
-                        array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips'])))) :
-                        null,
-                ]
-            );
+        // LAGRE CUSTOM BLOCKS
+        $existingIds = [];
+        foreach ($request->input('custom_blocks', []) as $id => $cbData) {
+            // felles validering (juster etter behov)
+            $data = [
+                'label'    => $cbData['label'] ?? null,
+                'icon'     => $cbData['icon'] ?? null,
+                'severity' => $cbData['severity'] ?? null,
+                'text'     => $cbData['text'] ?? null,
+                'order'    => isset($cbData['order']) ? (int)$cbData['order'] : 0,
+                'section_id' => (int)($cbData['section_id'] ?? 0),
+            ];
+
+            if (strpos($id, 'new_') === 0) {
+                // ny custom block
+                $project->customBlocks()->create($data);
+            } else {
+                // eksisterende block – oppdater
+                $cb = ProjectCustomBlock::find($id);
+                if ($cb) {
+                    $cb->update($data);
+                    $existingIds[] = $cb->id;
+                }
+            }
         }
-        return back()->with('ok', 'Endringer er lagret');
+
+        // fjern custom blocks som ikke lenger er sendt inn
+        ProjectCustomBlock::where('project_id', $project->id)
+            ->whereNotIn('id', $existingIds)
+            ->delete();
+
+        return back()->with('ok', 'Endringer lagret');
     }
+
 
     private function buildReportSections(): array
     {
