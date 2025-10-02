@@ -35,4 +35,30 @@ class SettingsController extends Controller
 
         return back()->with('ok','Firmaopplysninger lagret.');
     }
+// NY METODE for å vise PDF-innstillingssiden
+    public function pdf()
+    {
+        $settings = Setting::where('key', 'pdf_styles')->value('value') ?? [];
+        return view('settings.pdf', compact('settings'));
+    }
+
+    // NY METODE for å lagre PDF-innstillingene
+    public function savePdf(Request $request)
+    {
+        $validated = $request->validate([
+            'font_family' => 'required|string',
+            'font_size' => 'required|integer|min:8|max:16',
+            'separator_style' => 'required|in:solid,dashed,none',
+            'separator_thickness' => 'required|integer|min:1|max:10',
+            'separator_color' => 'required|string',
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'pdf_styles'],
+            ['value' => $validated]
+        );
+
+        return back()->with('ok', 'PDF-innstillinger er lagret.');
+    }
+    
 }

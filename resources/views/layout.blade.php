@@ -25,8 +25,10 @@
     <a href="{{ route('customers.index') }}">Kunder</a>
     <a href="{{ route('sections.index') }}">Seksjoner</a>
     <a href="{{ route('blocks.index') }}">Blokker</a>
-     <a href="{{ route('templates.index') }}">Maler</a> {{-- NY --}}
+     <a href="{{ route('templates.index') }}">Maler</a>
     <a href="{{ route('settings.company') }}">Innstillinger</a>
+    <a href="{{ route('settings.pdf') }}">PDF-innstillinger</a>
+
   </nav>
 
   @if(session('ok')) <div class="flash">{{ session('ok') }}</div> @endif

@@ -54,6 +54,17 @@
     <a href="{{ route('projects.create') }}">+ Nytt prosjekt</a>
 </div>
 
+@if($errors->any())
+  <div style="background:#ffecec;border:1px solid #f5b3b3;padding:.6rem 1rem;margin:1rem 0;border-radius: 6px;">
+    <strong>En feil oppstod:</strong>
+    <ul style="margin:.3rem 0 0 1.2rem; padding:0;">
+      @foreach($errors->all() as $e)
+        <li>{{ $e }}</li>
+      @endforeach
+    </ul>
+  </div>
+@endif
+
 <div class="pagination-controls">
     <form method="GET" action="{{ route('projects.index') }}">
         <label for="per_page">Viser:</label>

@@ -6,6 +6,7 @@ use App\Http\Controllers\SectionController;
 use App\Http\Controllers\BlockController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\SettingsController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -70,19 +71,6 @@ Route::post('/projects/{project}/duplicate', [ProjectController::class, 'duplica
 
 use Illuminate\Http\Request;
 
-Route::get('/debug-test', function (Request $request) {
-    echo '<pre>';
-    echo "=====================================================<br>";
-    echo "LARAVEL DEBUG OUTPUT<br>";
-    echo "=====================================================<br><br>";
-
-    echo "<b>Request Scheme:</b> " . $request->getScheme() . "<br>";
-    echo "<b>Is Secure Connection?:</b> " . ($request->isSecure() ? 'Yes' : 'No') . "<br><br>";
-
-    echo "<b>Config APP_URL:</b> " . config('app.url') . "<br>";
-    echo "<b>.env APP_URL:</b> " . env('APP_URL') . "<br><br>";
-
-    echo "<b>Generated 'blocks.index' route:</b> " . route('blocks.index') . "<br>";
-    echo "<b>Generated secure_url('/'):</b> " . secure_url('/') . "<br>";
-    echo '</pre>';
-});
+// NYE RUTER FOR PDF-INNSTILLINGER
+Route::get('/settings/pdf', [SettingsController::class, 'pdf'])->name('settings.pdf');
+Route::post('/settings/pdf', [SettingsController::class, 'savePdf'])->name('settings.pdf.save');

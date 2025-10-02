@@ -7,6 +7,10 @@ class Setting extends Model
 {
     protected $fillable = ['key','value'];
 
+    protected $casts = [
+        'value' => 'array', // Denne linjen løser problemet!
+    ];
+
     public static function get(string $key, $default=null)
     {
         $row = static::where('key',$key)->first();

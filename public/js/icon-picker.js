@@ -83,7 +83,9 @@ class IconPicker {
 
     async open() {
         IconPicker.activeInstance = this;
-        this.modal.style.display = 'block';
+        // ENDRE DENNE LINJEN:
+        this.modal.style.display = 'flex'; // Endret fra 'block' til 'flex'
+        
         this.modal.querySelector('#iconSearch').focus();
 
         if (!this.isLoaded) {
@@ -93,7 +95,6 @@ class IconPicker {
         this.modal.querySelector('#iconSearch').value = '';
         this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message">Skriv i søkefeltet for å finne ikoner.</div>';
     }
-
     async loadIcons() {
         try {
             this.modal.querySelector('#iconGrid').innerHTML = '<div class="icon-picker-message">Laster inn ikoner...</div>';

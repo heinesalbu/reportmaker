@@ -1,4 +1,3 @@
-<!-- resources/views/reports/preview.blade.php -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -17,11 +16,15 @@
     .sev-crit { color:#c9302c; }
     .sev-info { color:#31708f; }
     footer { margin-top: 14mm; font-size: 9pt; color:#777; }
+    /* NYTT: Styling for kundeinformasjon */
+    .customer-info { margin-bottom: 12mm; border: 1px solid #eee; padding: 4mm; border-radius: 4px; background: #fdfdfd; }
+    .customer-info h3 { font-size: 12pt; margin: 0 0 3mm; color: #333; }
+    .customer-info p { margin: 1mm 0; }
   </style>
   <link href="{{ asset('css/all.min.css') }}" rel="stylesheet">
 </head>
 <body>
-    <header style="display:flex; align-items:center; gap:12px; margin-bottom:12mm;">
+    <header style="display:flex; align-items:center; gap:12px; margin-bottom:8mm;">
     @if(!empty($company['logo']))
         <img src="{{ asset('storage/'.$company['logo']) }}" alt="logo" style="height:48px;">
     @endif
@@ -30,26 +33,38 @@
         <div class="meta">{{ $company['name'] }} · {{ now()->format('d.m.Y') }}</div>
     </div>
     </header>
-{{-- @php dd($company) @endphp --}}
 
-  @forelse($reportSections as $s)
-    <h2>{{ $s['title'] }}</h2>
-    @foreach($s['blocks'] as $b)
-      <div class="block">
-        <strong>
-          <span class="icon"><i class="{{ $b['icon'] }}"></i></span>
-          {{ $b['label'] }}
-          <span class="meta {{ 'sev-'.$b['severity'] }}"> ({{ $b['severity'] }})</span>
-        </strong>
-        <div>{{ $b['text'] }}</div>
-      </div>
-    @endforeach
-  @empty
-    <p>Ingen valgte blokker ennå. Gå til <a href="{{ route('projects.findings',$project) }}">Funn & blokker</a> og huk av det du vil ha med.</p>
-  @endforelse
+    @if($project->customer)
+    <div class="customer-info">
+        <h3>Kundeinformasjon</h3>
+        <p><strong>Navn:</strong> {{ $project->customer->name }}</p>
+        @if($project->customer->org_no)
+        <p><strong>Org.nr:</strong> {{ $project->customer->org_no }}</p>
+        @endif
+        @if(!empty($project->customer->domains))
+        <p><strong>Domene(r):</strong> {{ implode(', ', $project->customer->domains) }}</p>
+        @endif
+    </div>
+    @endif
 
-  <footer>
-    {{ $company['footer'] }}
-  </footer>
+    @forelse($reportSections as $s)
+        <h2>{{ $s['title'] }}</h2>
+        @foreach($s['blocks'] as $b)
+          <div class="block">
+            <strong>
+              <span class="icon"><i class="{{ $b['icon'] }}"></i></span>
+              {{ $b['label'] }}
+              <span class="meta {{ 'sev-'.$b['severity'] }}"> ({{ $b['severity'] }})</span>
+            </strong>
+            <div>{!! nl2br(e($b['text'])) !!}</div>
+          </div>
+        @endforeach
+    @empty
+        <p>Ingen valgte blokker ennå. Gå til <a href="{{ route('projects.findings',$project) }}">Funn & blokker</a> og huk av det du vil ha med.</p>
+    @endforelse
+
+    <footer>
+        {{ $company['footer'] }}
+    </footer>
 </body>
 </html>

@@ -119,31 +119,40 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('ok','Prosjekt slettet');
     }
 
-    // app/Http/Controllers/ProjectController.php
+// in app/Http/Controllers/ProjectController.php
 
-    public function findings(Project $project)
-    {
-        // Eager-load relasjoner for å forbedre ytelsen
-        $project->load('projectBlocks');
-
-        // Hent alle blokker som er tilgjengelige for prosjektets mal
-        $allBlocks = \App\Models\Block::with('section')
-            ->whereHas('section.templates', function ($query) use ($project) {
-                $query->where('template_id', $project->template_id);
-            })
-            ->orderBy('section_id')
-            ->orderBy('order')
-            ->get();
-
-        // Grupper blokkene etter navnet på seksjonen
-        $groupedBlocks = $allBlocks->groupBy('section.label');
-
-        // Send det grupperte datasettet til viewet
-        return view('projects.findings', [
-            'project' => $project,
-            'groupedBlocks' => $groupedBlocks,
-        ]);
+public function findings(Project $project)
+{
+    // 1. Sjekk at prosjektet har en mal tilknyttet
+    if (!$project->template_id) {
+        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
     }
+
+    // 2. Eager-load eksisterende valg for god ytelse
+    $project->load('projectBlocks');
+
+    // 3. Hent de korrekte SEKSJONENE i riktig rekkefølge,
+    //    og eager-load deres tilhørende blokker (også sortert)
+    $orderedSections = \App\Models\Section::orderBy('order', 'asc')
+        ->whereHas('templates', function ($query) use ($project) {
+            $query->where('template_id', $project->template_id);
+        })
+        ->with(['blocks' => function ($query) {
+            $query->orderBy('order', 'asc');
+        }])
+        ->get();
+
+    // 4. Transformer de sorterte seksjonene til den datastrukturen viewet forventer
+    $groupedBlocks = $orderedSections->mapWithKeys(function ($section) {
+        return [$section->label => $section->blocks];
+    });
+
+    // 5. Send den korrekt sorterte dataen til viewet
+    return view('projects.findings', [
+        'project' => $project,
+        'groupedBlocks' => $groupedBlocks,
+    ]);
+}
 
     public function saveFindings(Request $request, Project $project)
     {
@@ -191,8 +200,9 @@ class ProjectController extends Controller
         // 2) Firma-info
         $company = $this->companyInfo();
 
-        // 3) Prosjektets valg (pivot)
-        $pb = $project->projectBlocks()->get()->keyBy('block_id');
+        // 3) Prosjektets valg (pivot) - EAGER LOAD
+        $project->load('projectBlocks');
+        $pb = $project->projectBlocks->keyBy('block_id');
 
         // 4) Bygg rapportseksjoner kun fra valgte blokker
         $reportSections = [];
@@ -205,11 +215,11 @@ class ProjectController extends Controller
                 }
 
                 $chosen[] = [
-                    'icon'     => $b->icon,
-                    'label'    => $b->label,
+                    'icon'     => $row->override_icon ?: $b->icon,
+                    'label'    => $row->override_label ?: $b->label,
                     'severity' => $b->severity,
                     'text'     => $row->override_text ?: $b->default_text,
-                    'tips'     => $b->tips ?? null,
+                    'tips'     => $row->override_tips ?? $b->tips ?? null,
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
@@ -235,7 +245,6 @@ class ProjectController extends Controller
         ]);
     }
 
-
     public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf)
     {
         // 1) Seksjoner + blokker i stabil rekkefølge
@@ -246,8 +255,9 @@ class ProjectController extends Controller
         // 2) Firma-info
         $company = $this->companyInfo();
 
-        // 3) Prosjektets valg (pivot)
-        $pb = $project->projectBlocks()->get()->keyBy('block_id');
+        // 3) Prosjektets valg (pivot) - EAGER LOAD
+        $project->load('projectBlocks');
+        $pb = $project->projectBlocks->keyBy('block_id');
 
         // 4) Bygg rapportseksjoner kun fra valgte blokker
         $reportSections = [];
@@ -260,11 +270,11 @@ class ProjectController extends Controller
                 }
 
                 $chosen[] = [
-                    'icon'     => $b->icon,
-                    'label'    => $b->label,
+                    'icon'     => $row->override_icon ?: $b->icon,
+                    'label'    => $row->override_label ?: $b->label,
                     'severity' => $b->severity,
                     'text'     => $row->override_text ?: $b->default_text,
-                    'tips'     => $b->tips ?? null,
+                    'tips'     => $row->override_tips ?? $b->tips ?? null,
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
@@ -283,12 +293,16 @@ class ProjectController extends Controller
 
         usort($reportSections, fn($a,$b) => $a['_order'] <=> $b['_order'] ?: strcmp($a['title'],$b['title']));
 
+        $pdfStyles = \App\Models\Setting::where('key', 'pdf_styles')->value('value') ?? [];
+
+
         // 5) Render HTML -> bytes
-        $html = view('reports.pdf', [
-            'project'        => $project,
-            'reportSections' => $reportSections,
-            'company'        => $company,
-        ])->render();
+        $html = view('reports.pdf', compact(
+            'project', 
+            'reportSections', 
+            'company', 
+            'pdfStyles'))->render();
+
 
         $out = $pdf->renderBytes($html, public_path(), []);
 

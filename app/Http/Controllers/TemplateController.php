@@ -124,94 +124,95 @@ class TemplateController extends Controller
     }
     public function saveStructure(Request $request, Template $template)
     {
-        // Forventet input-struktur:
-        // sections[SECTION_ID][included|title_override|order_override]
-        // blocks[BLOCK_ID][included|icon_override|label_override|severity_override|order_override|visible_by_default_override|default_text_override|tips_csv|references_csv|tags_csv]
+        // Valider input - inkluderer nå navn og beskrivelse
+        $request->validate([
+            'template_name' => 'required|string|max:255',
+            'template_description' => 'nullable|string',
+            
+            'sections' => 'nullable|array',
+            'sections.*.included' => 'nullable|boolean',
+            'sections.*.title_override' => 'nullable|string|max:255',
+            'sections.*.order_override' => 'nullable|integer',
+            
+            'blocks' => 'nullable|array',
+            'blocks.*.included' => 'nullable|boolean',
+            'blocks.*.label_override' => 'nullable|string|max:255',
+            'blocks.*.icon_override' => 'nullable|string|max:100',
+            'blocks.*.severity_override' => 'nullable|in:info,warn,crit',
+            'blocks.*.default_text_override' => 'nullable|string',
+            'blocks.*.tips_csv' => 'nullable|string',
+            'blocks.*.order_override' => 'nullable|integer',
+            'blocks.*.visible_by_default_override' => 'nullable|boolean',
+        ]);
 
         $sections = $request->input('sections', []);
-        $blocks   = $request->input('blocks', []);
-
-        // Hjelpere
-        $toBool = fn($v) => filter_var($v, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
-        $toInt  = fn($v, $default=0) => is_numeric($v) ? (int)$v : $default;
-        $csv    = function ($s) {
-            if ($s === null) return null;
-            $s = trim($s);
-            if ($s === '') return null;
-            // Splitt på komma, trim hver, fjern tomme
-            $arr = array_values(array_filter(array_map('trim', explode(',', $s)), fn($x) => $x !== ''));
-            return $arr ?: null;
-        };
+        $blocks = $request->input('blocks', []);
 
         DB::beginTransaction();
         try {
-            // Upsert SEKSJONER
-            if (!empty($sections)) {
-                $now = now();
-                $rows = [];
-                foreach ($sections as $sectionId => $payload) {
-                    $rows[] = [
-                        'template_id'    => $template->id,
-                        'section_id'     => (int)$sectionId,
-                        'included'       => $toBool($payload['included'] ?? true),
-                        'title_override' => $payload['title_override'] ?? null,
-                        'order_override' => $toInt($payload['order_override'] ?? 0),
-                        'created_at'     => $now,
-                        'updated_at'     => $now,
-                    ];
-                }
+            // Oppdater malens navn og beskrivelse
+            $template->update([
+                'name' => $request->input('template_name'),
+                'description' => $request->input('template_description'),
+            ]);
 
-                // konflikt på (template_id, section_id)
-                DB::table('template_sections')->upsert(
-                    $rows,
-                    ['template_id','section_id'],
-                    ['included','title_override','order_override','updated_at']
+            // Lagre SEKSJONER
+            foreach ($sections as $sectionId => $data) {
+                TemplateSection::updateOrCreate(
+                    [
+                        'template_id' => $template->id,
+                        'section_id' => (int)$sectionId,
+                    ],
+                    [
+                        'included' => isset($data['included']) && $data['included'] == '1',
+                        'title_override' => $data['title_override'] ?? null,
+                        'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
+                    ]
                 );
             }
 
-            // Upsert BLOKKER
-            if (!empty($blocks)) {
-                $now  = now();
-                $rows = [];
-                foreach ($blocks as $blockId => $payload) {
-                    $rows[] = [
-                        'template_id'                   => $template->id,
-                        'block_id'                      => (int)$blockId,
-                        'included'                      => $toBool($payload['included'] ?? false),
-                        'icon_override'                 => $payload['icon_override']     ?? null,
-                        'label_override'                => $payload['label_override']    ?? null,
-                        'severity_override'             => $payload['severity_override']  ?? null, // "info|warn|crit" eller null
-                        'default_text_override'         => $payload['default_text_override'] ?? null,
-                        'tips_override'                 => $csv($payload['tips_csv']        ?? null),
-                        'references_override'           => $csv($payload['references_csv']  ?? null),
-                        'tags_override'                 => $csv($payload['tags_csv']        ?? null),
-                        'order_override'                => $toInt($payload['order_override'] ?? 0),
-                        'visible_by_default_override'   => array_key_exists('visible_by_default_override', $payload)
-                                                            ? $toBool($payload['visible_by_default_override'])
-                                                            : null, // lar NULL bety "arv"
-                        'created_at'                    => $now,
-                        'updated_at'                    => $now,
-                    ];
+            // Lagre BLOKKER
+            foreach ($blocks as $blockId => $data) {
+                // Konverter tips fra CSV til array
+                $tipsArray = null;
+                if (!empty($data['tips_csv'])) {
+                    $tipsArray = array_values(array_filter(
+                        array_map('trim', explode(',', $data['tips_csv'])),
+                        function($v) { return $v !== ''; }
+                    ));
+                    if (empty($tipsArray)) {
+                        $tipsArray = null;
+                    }
                 }
 
-                // konflikt på (template_id, block_id)
-                DB::table('template_blocks')->upsert(
-                    $rows,
-                    ['template_id','block_id'],
+                TemplateBlock::updateOrCreate(
                     [
-                        'included','icon_override','label_override','severity_override',
-                        'default_text_override','tips_override','references_override','tags_override',
-                        'order_override','visible_by_default_override','updated_at'
+                        'template_id' => $template->id,
+                        'block_id' => (int)$blockId,
+                    ],
+                    [
+                        'included' => isset($data['included']) && $data['included'] == '1',
+                        'label_override' => $data['label_override'] ?? null,
+                        'icon_override' => $data['icon_override'] ?? null,
+                        'severity_override' => $data['severity_override'] ?? null,
+                        'default_text_override' => $data['default_text_override'] ?? null,
+                        'tips_override' => $tipsArray,
+                        'references_override' => null,
+                        'tags_override' => null,
+                        'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
+                        'visible_by_default_override' => isset($data['visible_by_default_override']) && $data['visible_by_default_override'] == '1' ? true : null,
                     ]
                 );
             }
 
             DB::commit();
-            return back()->with('ok', 'Malen er oppdatert.');
+            return back()->with('ok', 'Mal lagret!');
         } catch (\Throwable $e) {
             DB::rollBack();
-            return back()->with('error', 'Kunne ikke lagre mal: '.$e->getMessage());
+            \Log::error('Template saveStructure failed: ' . $e->getMessage());
+            return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
         }
     }
+
 
 }
