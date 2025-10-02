@@ -119,64 +119,61 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('ok','Prosjekt slettet');
     }
 
+    // app/Http/Controllers/ProjectController.php
+
     public function findings(Project $project)
     {
-        $sections = Section::with('blocks')->orderBy('order')->get();
+        // Eager-load relasjoner for å forbedre ytelsen
+        $project->load('projectBlocks');
 
-        // hent eksisterende valg for rask lookup
-        $existing = $project->projectBlocks()->get()->keyBy('block_id');
+        // Hent alle blokker som er tilgjengelige for prosjektets mal
+        $allBlocks = \App\Models\Block::with('section')
+            ->whereHas('section.templates', function ($query) use ($project) {
+                $query->where('template_id', $project->template_id);
+            })
+            ->orderBy('section_id')
+            ->orderBy('order')
+            ->get();
 
+        // Grupper blokkene etter navnet på seksjonen
+        $groupedBlocks = $allBlocks->groupBy('section.label');
+
+        // Send det grupperte datasettet til viewet
         return view('projects.findings', [
-            'project'  => $project,
-            'sections' => $sections,
-            'existing' => $existing,
+            'project' => $project,
+            'groupedBlocks' => $groupedBlocks,
         ]);
     }
 
-    public function saveFindings(Project $project, Request $r)
+    public function saveFindings(Request $request, Project $project)
     {
-        $input = $r->input('blocks', []); // forventer blocks[ID][selected|override_text]
+        // Valideringsregler for alle felter
+        $rules = [
+            'blocks.*.selected' => 'boolean',
+            'blocks.*.override_label' => 'nullable|string|max:255',
+            'blocks.*.override_icon' => 'nullable|string|max:100',
+            'blocks.*.override_text' => 'nullable|string',
+            'blocks.*.override_tips' => 'nullable|string', // Mottas som kommaseparert
+        ];
+        $data = $request->validate($rules);
 
-        // Hent alle block-id'er som finnes i systemet (de som vises i skjemaet)
-        $allIds = Block::query()->pluck('id')->all();
-
-        // Eksisterende pivot-rader for prosjektet (for rask oppslag)
-        $existing = $project->projectBlocks()->get()->keyBy('block_id');
-
-        foreach ($allIds as $bid) {
-            $rowIn = $input[$bid] ?? null;
-
-            // Hvis ikke postet fra skjema -> behandle som ikke valgt og uten override
-            $selected = isset($rowIn['selected']) && (int)$rowIn['selected'] === 1;
-            $text     = isset($rowIn['override_text']) ? trim($rowIn['override_text']) : null;
-            if ($text === '') { $text = null; }
-
-            if ($existing->has($bid)) {
-                // oppdater
-                $pb = $existing[$bid];
-                $pb->selected      = $selected;
-                $pb->override_text = $text;
-                $pb->save();
-            } else {
-                // opprett bare dersom noe er satt
-                if ($selected || $text !== null) {
-                    $project->projectBlocks()->create([
-                        'block_id'       => $bid,
-                        'selected'       => $selected,
-                        'override_text'  => $text,
-                    ]);
-                }
-            }
+        foreach ($data['blocks'] as $blockId => $blockData) {
+            $project->projectBlocks()->updateOrCreate(
+                ['block_id' => $blockId],
+                [
+                    'selected' => $blockData['selected'] ?? false,
+                    'override_label' => $blockData['override_label'],
+                    'override_icon' => $blockData['override_icon'],
+                    'override_text' => $blockData['override_text'],
+                    // Konverter kommaseparert streng tilbake til en array for lagring
+                    'override_tips' => $blockData['override_tips'] ?
+                        array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips'])))) :
+                        null,
+                ]
+            );
         }
-
-        return redirect()
-            ->route('projects.findings', $project)
-            ->with('ok', 'Funn lagret.');
+        return back()->with('ok', 'Endringer er lagret');
     }
-
-
-
-
 
     private function buildReportSections(): array
     {

@@ -11,4 +11,9 @@ class Section extends Model
     {
         return $this->hasMany(Block::class)->orderBy('id');
     }
+  
+    public function templates()
+    {
+        return $this->belongsToMany(Template::class, 'template_sections');
+    }
 }
