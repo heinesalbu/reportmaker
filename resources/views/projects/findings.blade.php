@@ -122,6 +122,12 @@
         font-style: italic;
         grid-column: 1 / -1;
     }
+    .finding-block {
+        max-width: 500px;     /* juster til ønsket bredde */
+        width: 100%;
+        
+    }
+    
 </style>
 
 <h1>Velg blokker for "{{ $project->title }}"</h1>

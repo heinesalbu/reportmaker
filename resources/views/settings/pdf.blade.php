@@ -51,6 +51,27 @@
             <label for="separator_color">Linjefarge</label>
             <input type="color" id="separator_color" name="separator_color" value="{{ $settings['separator_color'] ?? '#dddddd' }}">
         </div>
+        <div class="form-group">
+            <label for="margin_top">Topp­margin (mm)</label>
+            <input type="number" id="margin_top" name="margin_top"
+                value="{{ $settings['margin_top'] ?? 18 }}" min="5" max="40">
+        </div>
+        <div class="form-group">
+            <label for="margin_right">Høyre­margin (mm)</label>
+            <input type="number" id="margin_right" name="margin_right"
+                value="{{ $settings['margin_right'] ?? 18 }}" min="5" max="40">
+        </div>
+        <div class="form-group">
+            <label for="margin_bottom">Bunn­margin (mm)</label>
+            <input type="number" id="margin_bottom" name="margin_bottom"
+                value="{{ $settings['margin_bottom'] ?? 18 }}" min="5" max="40">
+        </div>
+        <div class="form-group">
+            <label for="margin_left">Venstre­margin (mm)</label>
+            <input type="number" id="margin_left" name="margin_left"
+                value="{{ $settings['margin_left'] ?? 18 }}" min="5" max="40">
+        </div>
+
     </div>
 
     <p><button type="submit">Lagre innstillinger</button></p>

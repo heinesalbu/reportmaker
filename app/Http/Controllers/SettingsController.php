@@ -46,11 +46,15 @@ class SettingsController extends Controller
     public function savePdf(Request $request)
     {
         $validated = $request->validate([
-            'font_family' => 'required|string',
-            'font_size' => 'required|integer|min:8|max:16',
-            'separator_style' => 'required|in:solid,dashed,none',
-            'separator_thickness' => 'required|integer|min:1|max:10',
-            'separator_color' => 'required|string',
+            'font_family'        => 'required|string',
+            'font_size'          => 'required|integer|min:8|max:16',
+            'separator_style'    => 'required|in:solid,dashed,none',
+            'separator_thickness'=> 'required|integer|min:1|max:10',
+            'separator_color'    => 'required|string',
+            'margin_top'         => 'required|integer|min:5|max:40',
+            'margin_right'       => 'required|integer|min:5|max:40',
+            'margin_bottom'      => 'required|integer|min:5|max:40',
+            'margin_left'        => 'required|integer|min:5|max:40',
         ]);
 
         Setting::updateOrCreate(
@@ -60,5 +64,7 @@ class SettingsController extends Controller
 
         return back()->with('ok', 'PDF-innstillinger er lagret.');
     }
+
+
     
 }

@@ -8,10 +8,18 @@ use Illuminate\Support\Str;
 
 class BlockController extends Controller
 {
-    public function index() {
-        $blocks = Block::with('section')->orderBy('section_id')->orderBy('order')->paginate(20);
-        return view('blocks.index', compact('blocks'));
-    }
+public function index() {
+    $blocks = Block::query()
+        ->select('blocks.*')  // sørg for at bare block-kolonnene blir returnert
+        ->leftJoin('sections', 'blocks.section_id', '=', 'sections.id')
+        ->with('section')
+        ->orderBy('sections.order')   // sorter seksjonene etter feltet "Rekkefølge"
+        ->orderBy('blocks.order')     // sorter blokkene innenfor seksjonen
+        ->paginate(20);
+
+    return view('blocks.index', compact('blocks'));
+}
+
 
     public function create() {
         $sections = Section::orderBy('order')->get();

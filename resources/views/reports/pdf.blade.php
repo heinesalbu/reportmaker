@@ -4,7 +4,14 @@
   <meta charset="utf-8">
   <title>{{ $project->title }}</title>
   <style>
-    @page { size: A4; margin: 18mm; }
+    @page {
+        size: A4;
+        margin: {{ $pdfStyles['margin_top'] ?? 18 }}mm
+                {{ $pdfStyles['margin_right'] ?? 18 }}mm
+                {{ $pdfStyles['margin_bottom'] ?? 18 }}mm
+                {{ $pdfStyles['margin_left'] ?? 18 }}mm;
+    }
+
     /* Bruker de nye, dynamiske verdiene med standardverdier som fallback */
     body { 
         font-family: {{ $pdfStyles['font_family'] ?? 'DejaVu Sans, Arial, sans-serif' }}; 
