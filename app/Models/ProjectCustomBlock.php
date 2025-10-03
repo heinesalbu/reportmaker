@@ -14,6 +14,12 @@ class ProjectCustomBlock extends Model
         'severity',
         'text',
         'order',
+        'tips',          // nytt
+        'after_block_id', // nytt
+    ];
+
+    protected $casts = [
+        'tips' => 'array', // nytt – lagres som JSON i databasen
     ];
 
     public function project()

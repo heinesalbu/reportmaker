@@ -192,21 +192,22 @@ public function findings(Project $project)
 public function saveFindings(Request $request, Project $project)
 {
     $validated = $request->validate([
-        // Standard blokker
+        // Valider standard blokker (overrides)
         'blocks.*.selected'       => 'boolean',
         'blocks.*.override_label' => 'nullable|string|max:255',
         'blocks.*.override_icon'  => 'nullable|string|max:100',
         'blocks.*.override_text'  => 'nullable|string',
         'blocks.*.override_tips'  => 'nullable|string',
-        // (Valgfritt) Validering for custom blocks:
-        'custom_blocks.*.label'    => 'required|string|max:255',
-        'custom_blocks.*.icon'     => 'nullable|string|max:100',
-        'custom_blocks.*.text'     => 'nullable|string',
-        'custom_blocks.*.tips'     => 'nullable|string',
-        'custom_blocks.*.severity' => 'required|in:info,warn,crit',
+        // Valider custom blocks
+        'custom_blocks.*.label'           => 'nullable|string|max:255',
+        'custom_blocks.*.icon'            => 'nullable|string|max:100',
+        'custom_blocks.*.text'            => 'nullable|string',
+        'custom_blocks.*.tips'            => 'nullable|string',
+        'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
+        'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
     ]);
 
-    // Lagre/oppdater standardblokker
+    // Lagre/oppdater standard blokker
     foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
         $project->projectBlocks()->updateOrCreate(
             ['block_id' => $blockId],
@@ -222,16 +223,54 @@ public function saveFindings(Request $request, Project $project)
         );
     }
 
-    // (Valgfritt) Oppdater eksisterende custom blocks
-    foreach ($validated['custom_blocks'] ?? [] as $customId => $customData) {
-        $custom = ProjectCustomBlock::find($customId);
-        if ($custom && $custom->project_id === $project->id) {
-            $custom->update($customData);
+    // Håndter custom blocks
+    $processedCustomIds = [];
+    foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
+        // Normaliser tips til array
+        $tipsArr = null;
+        if (!empty($customData['tips'])) {
+            $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
         }
+        $attrs = [
+            'label'      => $customData['label']      ?? null,
+            'icon'       => $customData['icon']       ?? null,
+            'text'       => $customData['text']       ?? null,
+            'tips'       => $tipsArr,
+            'severity'   => $customData['severity']   ?? 'info',
+            'after_block_id' => $customData['after_block_id'] ?? null,
+        ];
+
+        // Nye blokker: nøkkel begynner med "new_"
+        if (str_starts_with((string)$customKey, 'new_')) {
+            $attrs['project_id'] = $project->id;
+            // Finn seksjons‑ID fra blokk ID
+            if (!empty($customData['after_block_id'])) {
+                $blockObj = \App\Models\Block::find($customData['after_block_id']);
+                if ($blockObj) {
+                    $attrs['section_id'] = $blockObj->section_id;
+                }
+            }
+            \App\Models\ProjectCustomBlock::create($attrs);
+        } else {
+            // Eksisterende custom‑block
+            $cb = \App\Models\ProjectCustomBlock::find($customKey);
+            if ($cb && $cb->project_id == $project->id) {
+                $cb->update($attrs);
+                $processedCustomIds[] = $cb->id;
+            }
+        }
+    }
+
+    // Valgfritt: slett custom‑blokker som ikke ble sendt inn (f.eks. hvis bruker har fjernet dem)
+    if (!empty($processedCustomIds)) {
+        \App\Models\ProjectCustomBlock::where('project_id', $project->id)
+            ->whereNotIn('id', $processedCustomIds)
+            ->delete();
     }
 
     return back()->with('ok', 'Endringer er lagret');
 }
+
 
 
 
