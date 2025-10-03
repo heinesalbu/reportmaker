@@ -232,6 +232,7 @@
                 </div>
                 <div class="section-blocks-wrapper">
                     @foreach($blocks as $b)
+                        
                         @if ($b instanceof \App\Models\ProjectCustomBlock)
                             @php
                                 $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
@@ -283,6 +284,14 @@
                                 $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
                                 $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
                             @endphp
+                                @php
+                                    $uniqueId = 'cust'.$b->id;
+                                    $customLabel = old("custom_blocks.{$b->id}.label", $b->label);
+                                    $customIcon  = old("custom_blocks.{$b->id}.icon", $b->icon);
+                                    $customText  = old("custom_blocks.{$b->id}.text", $b->text);
+                                    $customTips  = old("custom_blocks.{$b->id}.tips", is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
+                                    $customSeverity = old("custom_blocks.{$b->id}.severity", $b->severity ?: 'info');
+                                @endphp
                             <div class="finding-block custom-block">
                                 <div class="finding-block-main">
                                     <div class="finding-col-title">
