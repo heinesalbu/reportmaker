@@ -123,64 +123,55 @@ class ProjectController extends Controller
 
 
 
-    public function findings(Project $project)
-    {
-        // Prosjektet må ha en mal
-        if (!$project->template_id) {
-            return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
-        }
-
-        // Last prosjektets egne overstyringer (project_blocks) og eventuelle custom blocks
-        $project->load('projectBlocks', 'customBlocks');
-
-        // Hent seksjoner knyttet til prosjektets mal, sortert på seksjonenes 'order'.
-        // For hver seksjon henter vi også blokkene sortert på blokkens 'order'.
-        $sections = Section::whereHas('templates', function ($query) use ($project) {
-                $query->where('template_id', $project->template_id);
-            })
-            ->orderBy('order')
-            ->with(['blocks' => function ($query) {
-                $query->orderBy('order');
-            }])
-            ->get();
-
-        // Hent malens overrides for seksjonstitler og blokk-verdier.
-        // Dette brukes når viewet skal velge riktig label/ikon/tekst/tips.
-        [$templateSections, $templateBlocks] = $this->templateMaps($project);
-        // templateMaps() finnes allerede i ProjectController. Den returnerer:
-        // [TemplateSections keyed by section_id, TemplateBlocks keyed by block_id]
-
-        // Bygg opp en collection av seksjonsnavn => blokker (+ custom blocks)
-        $groupedBlocks = collect();
-        foreach ($sections as $section) {
-            $items = collect();
-
-            foreach ($section->blocks as $block) {
-                $items->push($block);
-
-                // Legg til custom-blocks som skal komme etter denne blokken
-                $customsAfter = $project->customBlocks
-                    ->where('after_block_id', $block->id)
-                    ->sortBy('order');
-                foreach ($customsAfter as $custom) {
-                    $items->push($custom);
-                }
-            }
-
-            // Seksjonens visningsnavn: malens title_override hvis definert, ellers standard label
-            $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
-
-            $groupedBlocks->put($sectionTitle, $items);
-        }
-
-        return view('projects.findings', [
-            'project'         => $project,
-            'groupedBlocks'   => $groupedBlocks,
-            // Send med malens overrides til Blade slik at de brukes når du skriver ut label, ikon, tekst, tips.
-            'templateBlocks'  => $templateBlocks,
-            'templateSections'=> $templateSections,
-        ]);
+public function findings(Project $project)
+{
+    if (!$project->template_id) {
+        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
     }
+
+    $project->load('projectBlocks', 'customBlocks', 'projectSections');
+
+    $sections = Section::whereHas('templates', function ($query) use ($project) {
+            $query->where('template_id', $project->template_id);
+        })
+        ->orderBy('order')
+        ->with(['blocks' => function ($query) {
+            $query->orderBy('order');
+        }])
+        ->get();
+
+    [$templateSections, $templateBlocks] = $this->templateMaps($project);
+
+    $groupedBlocks = collect();
+    foreach ($sections as $section) {
+        $items = collect();
+
+        foreach ($section->blocks as $block) {
+            $items->push($block);
+
+            $customsAfter = $project->customBlocks
+                ->where('after_block_id', $block->id)
+                ->sortBy('order');
+            foreach ($customsAfter as $custom) {
+                $items->push($custom);
+            }
+        }
+
+        $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
+        $groupedBlocks->put($sectionTitle, $items);
+    }
+
+    $projectSections = $project->projectSections->keyBy('section_id');
+
+    return view('projects.findings', [
+        'project'          => $project,
+        'groupedBlocks'    => $groupedBlocks,
+        'templateBlocks'   => $templateBlocks,
+        'templateSections' => $templateSections,
+        'projectSections'  => $projectSections,
+        'sections'         => $sections, // Legg til dette
+    ]);
+}
 
         // in app/Http/Controllers/ProjectController.php
 

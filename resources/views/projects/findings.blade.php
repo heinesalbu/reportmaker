@@ -181,12 +181,28 @@
     @csrf
     <div class="finding-list">
         @forelse($groupedBlocks as $groupName => $blocks)
-            <section class="finding-section">
+            @php
+                $sectionId = $blocks->first()?->section_id ?? $blocks->first()?->after_block_id;
+                if ($sectionId && $blocks->first() instanceof \App\Models\ProjectCustomBlock) {
+                    $afterBlock = \App\Models\Block::find($blocks->first()->after_block_id);
+                    $sectionId = $afterBlock?->section_id;
+                }
+            @endphp
+            <section class="finding-section" data-section-id="{{ $sectionId }}">
                 <div class="collapsible-section-header">
                     <h2>
                         <span class="section-toggle-icon">▼</span>
                         <span>{{ $groupName }}</span>
                     </h2>
+                    @php
+                        $projectSection = isset($projectSections) ? $projectSections->get($sectionId) : null;
+                        $templateSection = isset($templateSections) ? $templateSections->get($sectionId) : null;
+                        $showTitle = $projectSection?->show_title ?? $templateSection?->show_title ?? true;
+                    @endphp
+                    <label style="display:flex;align-items:center;gap:4px;margin-left:1rem;font-size:0.85rem;font-weight:normal;">
+                        <input type="checkbox" name="sections[{{ $sectionId }}][show_title]" value="1" {{ $showTitle ? 'checked' : '' }}>
+                        Vis tittel
+                    </label>
                 </div>
                 <div class="section-blocks-wrapper">
                     @foreach($blocks as $b)
@@ -329,6 +345,38 @@
                                                     <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
                                                 @endif
                                                 <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
+                                                <div class="form-group">
+                                                    <label>Synlighet i rapport</label>
+                                                    @php
+                                                        $showIcon = $projectBlock?->show_icon ?? $templateBlock?->show_icon ?? true;
+                                                        $showLabel = $projectBlock?->show_label ?? $templateBlock?->show_label ?? true;
+                                                        $showText = $projectBlock?->show_text ?? $templateBlock?->show_text ?? true;
+                                                        $showTips = $projectBlock?->show_tips ?? $templateBlock?->show_tips ?? true;
+                                                        $showSeverity = $projectBlock?->show_severity ?? $templateBlock?->show_severity ?? false;
+                                                    @endphp
+                                                    <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:0.85rem;">
+                                                        <label style="display:flex;align-items:center;gap:4px;">
+                                                            <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ $showIcon ? 'checked' : '' }}>
+                                                            Ikon
+                                                        </label>
+                                                        <label style="display:flex;align-items:center;gap:4px;">
+                                                            <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ $showLabel ? 'checked' : '' }}>
+                                                            Tittel
+                                                        </label>
+                                                        <label style="display:flex;align-items:center;gap:4px;">
+                                                            <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ $showText ? 'checked' : '' }}>
+                                                            Tekst
+                                                        </label>
+                                                        <label style="display:flex;align-items:center;gap:4px;">
+                                                            <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ $showTips ? 'checked' : '' }}>
+                                                            Tips
+                                                        </label>
+                                                        <label style="display:flex;align-items:center;gap:4px;">
+                                                            <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ $showSeverity ? 'checked' : '' }}>
+                                                            Severity
+                                                        </label>
+                                                    </div>
+                                                </div>
                                             </div>
                                     </div>
                                 </div>

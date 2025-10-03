@@ -38,5 +38,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectCustomBlock::class);
     }
+    public function projectSections()
+    {
+        return $this->hasMany(ProjectSection::class);
+    }
 
 }
