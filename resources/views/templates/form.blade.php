@@ -129,16 +129,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 @foreach($sections as $s)
                     @php $ts = optional($template->sections->firstWhere('section_id', $s->id)); @endphp
                     <div class="section-block">
-                        <div class="section-header" onclick="toggleSection(event,this)">
-                            <span class="section-toggle">▼</span>
-                            <input type="hidden" name="sections[{{ $s->id }}][included]" value="0">
-                            <input type="checkbox" name="sections[{{ $s->id }}][included]" value="1" {{ ($ts->included ?? true) ? 'checked' : '' }}>
-                            <div class="section-title">{{ $s->label }} <small style="color:#999">({{ $s->key }})</small></div>
-                            <div class="section-overrides">
-                                <input name="sections[{{ $s->id }}][title_override]" placeholder="Tittel-override" value="{{ old("sections.$s->id.title_override", $ts->title_override) }}">
-                                <input type="number" min="0" name="sections[{{ $s->id }}][order_override]" placeholder="Order" value="{{ old("sections.$s->id.order_override", $ts->order_override ?? 0) }}">
-                            </div>
+                    <div class="section-header" onclick="toggleSection(event,this)">
+                        <span class="section-toggle">▼</span>
+                        <input type="hidden" name="sections[{{ $s->id }}][included]" value="0">
+                        <input type="checkbox" name="sections[{{ $s->id }}][included]" value="1" {{ ($ts->included ?? true) ? 'checked' : '' }}>
+                        <div class="section-title">{{ $s->label }} <small style="color:#999">({{ $s->key }})</small></div>
+                        <div class="section-overrides">
+                            <input name="sections[{{ $s->id }}][title_override]" placeholder="Tittel-override" value="{{ old("sections.$s->id.title_override", $ts->title_override) }}">
+                            <input type="number" min="0" name="sections[{{ $s->id }}][order_override]" placeholder="Order" value="{{ old("sections.$s->id.order_override", $ts->order_override ?? 0) }}">
+                            <label style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+                                <input type="checkbox" name="sections[{{ $s->id }}][show_title]" value="1" {{ ($ts->show_title ?? true) ? 'checked' : '' }}>
+                                Vis tittel
+                            </label>
                         </div>
+                    </div>
                         <div class="section-content">
                             @foreach($s->blocks as $b)
                                 @php 
@@ -178,6 +182,55 @@ document.addEventListener('DOMContentLoaded', function () {
                                                     </select>
                                                 </div>
                                             </div>
+                                            <div class="form-row-inline">
+    <div class="form-group">
+        <label>Label-override</label>
+        <input name="blocks[{{ $b->id }}][label_override]" placeholder="{{ $b->label }}" value="{{ old("blocks.$b->id.label_override", $tb->label_override) }}">
+    </div>
+    <div class="form-group">
+        <label>Ikon-override</label>
+        <input name="blocks[{{ $b->id }}][icon_override]" placeholder="{{ $b->icon }}" value="{{ old("blocks.$b->id.icon_override", $tb->icon_override) }}">
+    </div>
+    <div class="form-group">
+        <label>Order</label>
+        <input type="number" min="0" name="blocks[{{ $b->id }}][order_override]" value="{{ old("blocks.$b->id.order_override", $tb->order_override ?? 0) }}">
+    </div>
+    <div class="form-group">
+        <label>Severity</label>
+        <select name="blocks[{{ $b->id }}][severity_override]">
+            <option value="">(arv: {{ $b->severity }})</option>
+            @foreach(['info','warn','crit'] as $opt)
+              <option value="{{ $opt }}" @selected(old("blocks.$b->id.severity_override", $tb->severity_override) === $opt)>{{ $opt }}</option>
+            @endforeach
+        </select>
+    </div>
+</div>
+
+<div class="form-group">
+    <label>Synlighet i rapport</label>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ ($tb->show_icon ?? true) ? 'checked' : '' }}>
+            Ikon
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ ($tb->show_label ?? true) ? 'checked' : '' }}>
+            Tittel
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ ($tb->show_text ?? true) ? 'checked' : '' }}>
+            Tekst
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ ($tb->show_tips ?? true) ? 'checked' : '' }}>
+            Tips
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ ($tb->show_severity ?? false) ? 'checked' : '' }}>
+            Severity
+        </label>
+    </div>
+</div>
                                             <div class="form-group">
                                                 <label>Tekst-override</label>
                                                 <textarea name="blocks[{{ $b->id }}][default_text_override]" rows="3" placeholder="Standard: {{ Str::limit($b->default_text, 80) }}">{{ old("blocks.$b->id.default_text_override", $tb->default_text_override) }}</textarea>

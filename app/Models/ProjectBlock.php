@@ -11,25 +11,18 @@ class ProjectBlock extends Model
      * @var array
      */
     protected $fillable = [
-        'project_id',
-        'block_id',
-        'selected',
-        'override_text',
-        // LEGG TIL DISSE
-        'override_label',
-        'override_icon',
-        'override_tips',
+        'project_id', 'block_id', 'selected',
+        'override_text', 'override_label', 'override_icon', 'override_tips',
+        'show_icon', 'show_label', 'show_text', 'show_tips', 'show_severity'
     ];
-
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array
-     */
     protected $casts = [
         'selected' => 'boolean',
-        // LEGG TIL DENNE
         'override_tips' => 'array',
+        'show_icon' => 'boolean',
+        'show_label' => 'boolean',
+        'show_text' => 'boolean',
+        'show_tips' => 'boolean',
+        'show_severity' => 'boolean',
     ];
 
     public function project(){ return $this->belongsTo(Project::class); }

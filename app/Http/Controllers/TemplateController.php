@@ -186,8 +186,11 @@ class TemplateController extends Controller
                         'included' => isset($data['included']) && $data['included'] == '1',
                         'title_override' => $data['title_override'] ?? null,
                         'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
+                        'show_title' => isset($data['show_title']) && $data['show_title'] == '1',
+
                     ]
                 );
+                
             }
 
             // Lagre BLOKKER
@@ -220,6 +223,11 @@ class TemplateController extends Controller
                         'tags_override' => null,
                         'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
                         'visible_by_default_override' => isset($data['visible_by_default_override']) && $data['visible_by_default_override'] == '1' ? true : null,
+                        'show_icon' => isset($data['show_icon']) && $data['show_icon'] == '1',
+                        'show_label' => isset($data['show_label']) && $data['show_label'] == '1',
+                        'show_text' => isset($data['show_text']) && $data['show_text'] == '1',
+                        'show_tips' => isset($data['show_tips']) && $data['show_tips'] == '1',
+                        'show_severity' => isset($data['show_severity']) && $data['show_severity'] == '1',
                     ]
                 );
             }
