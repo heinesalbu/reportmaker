@@ -225,6 +225,7 @@
                         $showTitle = $projectSection?->show_title ?? $templateSection?->show_title ?? true;
                     @endphp
                         <label style="display:flex;align-items:center;gap:4px;margin-left:1rem;font-size:0.85rem;font-weight:normal;">
+                            <input type="hidden" name="sections[{{ $sectionId }}][section_id]" value="{{ $sectionId }}">
                             <input type="hidden" name="sections[{{ $sectionId }}][show_title]" value="0">
                             <input type="checkbox" name="sections[{{ $sectionId }}][show_title]" value="1" {{ $showTitle ? 'checked' : '' }}>
                             Vis tittel
@@ -339,137 +340,150 @@
                                     </div>
                                 </div>
                             </div>
+                        {{-- 
+                        NØDFIX for findings.blade.php 
+                        FINN linjen: @else (etter custom block if-sjekken)
+                        ERSTATT ALT fra @else til @endif før @endforeach
+                        med denne KOMPLETTE koden:
+                        --}}
+
                         @else
-                           {{-- Del av resources/views/projects/findings.blade.php --}}
-{{-- Dette er kun delen som handler om synlighet checkboxes i block-details --}}
-
-@php
-    $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
-    $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
-    
-    // Prioritet: Project override → Template override → Block default
-    $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
-    
-    $overrideLabel = old("blocks.{$b->id}.override_label", 
-        $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
-    
-    $overrideIcon = old("blocks.{$b->id}.override_icon", 
-        $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
-    
-    $overrideText = old("blocks.{$b->id}.override_text", 
-        $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
-    
-    // Tips håndtering
-    $projectTips = is_array($projectBlock?->override_tips) 
-        ? implode(', ', $projectBlock->override_tips) 
-        : ($projectBlock?->override_tips ?? '');
-    
-    $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
-        ? implode(', ', $templateBlock->tips_override) 
-        : ($templateBlock?->tips_override ?? '');
-    
-    $overrideTips = old("blocks.{$b->id}.override_tips", 
-        $projectTips ?: $templateTips);
-    
-    // SYNLIGHETSINNSTILLINGER: project → template → default
-    $showIcon = $projectBlock?->show_icon ?? $templateBlock?->show_icon ?? true;
-    $showLabel = $projectBlock?->show_label ?? $templateBlock?->show_label ?? true;
-    $showText = $projectBlock?->show_text ?? $templateBlock?->show_text ?? true;
-    $showTips = $projectBlock?->show_tips ?? $templateBlock?->show_tips ?? true;
-    $showSeverity = $projectBlock?->show_severity ?? $templateBlock?->show_severity ?? false;
-    
-    // Effektive verdier for visning (det som faktisk vises)
-    $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
-    $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
-@endphp
-
-<div class="finding-block">
-    <div class="finding-block-main">
-        <div class="finding-col-select">
-            <input type="hidden" name="blocks[{{ $b->id }}][selected]" value="0">
-            <input type="checkbox" id="cb-{{ $b->id }}" name="blocks[{{ $b->id }}][selected]" value="1" @checked($checked)>
-        </div>
-        <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
-            <span class="icon"><i class="{{ $effectiveIcon }}"></i></span>
-            <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
-        </div>
-        <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
-        <button type="button"
-                class="add-custom-btn"
-                data-block-id="{{ $b->id }}"
-                data-section-id="{{ $b->section_id ?? ($b->section?->id ?? '') }}">
-            add
-        </button>
-    </div>
-    <div class="finding-details">
-        <div class="finding-details-content">
-            <div class="form-group">
-                <label for="label-{{ $b->id }}">Overstyr Tittel</label>
-                <input id="label-{{ $b->id }}" name="blocks[{{ $b->id }}][override_label]" value="{{ $overrideLabel }}" placeholder="{{ $b->label }}">
-            </div>
-            <div class="form-group">
-                <label for="icon-picker-trigger-{{ $b->id }}">Overstyr Ikon</label>
-                <div id="icon-picker-trigger-{{ $b->id }}" class="icon-picker-trigger" tabindex="0">
-                    <span class="icon-picker-preview"><i data-preview-for="icon-{{ $b->id }}" class="{{ $overrideIcon ?: $b->icon }}"></i></span>
-                    <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
-                    <input id="icon-{{ $b->id }}" name="blocks[{{ $b->id }}][override_icon]" type="text" value="{{ $overrideIcon }}">
-                    <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="text-{{ $b->id }}">Overstyr Standardtekst</label>
-                @if(!empty($b->default_text))
-                <div class="default-text-wrapper"><p><strong>Standard:</strong> {!! nl2br(e($b->default_text)) !!}</p></div>
-                @endif
-                <textarea id="text-{{ $b->id }}" name="blocks[{{ $b->id }}][override_text]" rows="4" placeholder="La feltet være tomt for å bruke standardteksten...">{{ $overrideText }}</textarea>
-            </div>
-            <div class="form-group">
-                <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
-                @php
-                    $defaultTips = $templateBlock && $templateBlock->tips_override 
-                        ? (is_array($templateBlock->tips_override) ? implode(', ', $templateBlock->tips_override) : $templateBlock->tips_override)
-                        : (is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
-                @endphp
-                @if($defaultTips)
-                    <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
-                @endif
-                <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
-            </div>
-            
-            {{-- SYNLIGHET I RAPPORT --}}
-            <div class="form-group">
-                <label>Synlighet i rapport</label>
-                <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:0.85rem;">
-                    <label style="display:flex;align-items:center;gap:4px;">
-                        <input type="hidden" name="blocks[{{ $b->id }}][show_icon]" value="0">
-                        <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ $showIcon ? 'checked' : '' }}>
-                        Ikon
-                    </label>
-                    <label style="display:flex;align-items:center;gap:4px;">
-                        <input type="hidden" name="blocks[{{ $b->id }}][show_label]" value="0">
-                        <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ $showLabel ? 'checked' : '' }}>
-                        Tittel
-                    </label>
-                    <label style="display:flex;align-items:center;gap:4px;">
-                        <input type="hidden" name="blocks[{{ $b->id }}][show_text]" value="0">
-                        <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ $showText ? 'checked' : '' }}>
-                        Tekst
-                    </label>
-                    <label style="display:flex;align-items:center;gap:4px;">
-                        <input type="hidden" name="blocks[{{ $b->id }}][show_tips]" value="0">
-                        <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ $showTips ? 'checked' : '' }}>
-                        Tips
-                    </label>
-                    <label style="display:flex;align-items:center;gap:4px;">
-                        <input type="hidden" name="blocks[{{ $b->id }}][show_severity]" value="0">
-                        <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ $showSeverity ? 'checked' : '' }}>
-                        Severity
-                    </label>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+                            @php
+                                $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
+                                $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
+                                
+                                $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
+                                
+                                $overrideLabel = old("blocks.{$b->id}.override_label", 
+                                    $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
+                                
+                                $overrideIcon = old("blocks.{$b->id}.override_icon", 
+                                    $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
+                                
+                                $overrideText = old("blocks.{$b->id}.override_text", 
+                                    $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
+                                
+                                $projectTips = is_array($projectBlock?->override_tips) 
+                                    ? implode(', ', $projectBlock->override_tips) 
+                                    : ($projectBlock?->override_tips ?? '');
+                                
+                                $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
+                                    ? implode(', ', $templateBlock->tips_override) 
+                                    : ($templateBlock?->tips_override ?? '');
+                                
+                                $overrideTips = old("blocks.{$b->id}.override_tips", 
+                                    $projectTips ?: $templateTips);
+                                
+                                $showIcon = $projectBlock && $projectBlock->show_icon !== null 
+                                    ? (bool)$projectBlock->show_icon 
+                                    : ($templateBlock && $templateBlock->show_icon !== null ? (bool)$templateBlock->show_icon : true);
+                                
+                                $showLabel = $projectBlock && $projectBlock->show_label !== null 
+                                    ? (bool)$projectBlock->show_label 
+                                    : ($templateBlock && $templateBlock->show_label !== null ? (bool)$templateBlock->show_label : true);
+                                
+                                $showText = $projectBlock && $projectBlock->show_text !== null 
+                                    ? (bool)$projectBlock->show_text 
+                                    : ($templateBlock && $templateBlock->show_text !== null ? (bool)$templateBlock->show_text : true);
+                                
+                                $showTips = $projectBlock && $projectBlock->show_tips !== null 
+                                    ? (bool)$projectBlock->show_tips 
+                                    : ($templateBlock && $templateBlock->show_tips !== null ? (bool)$templateBlock->show_tips : true);
+                                
+                                $showSeverity = $projectBlock && $projectBlock->show_severity !== null 
+                                    ? (bool)$projectBlock->show_severity 
+                                    : ($templateBlock && $templateBlock->show_severity !== null ? (bool)$templateBlock->show_severity : false);
+                                
+                                $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
+                                $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
+                            @endphp
+                            
+                            <div class="finding-block">
+                                <div class="finding-block-main">
+                                    <div class="finding-col-select">
+                                        <input type="hidden" name="blocks[{{ $b->id }}][selected]" value="0">
+                                        <input type="checkbox" id="cb-{{ $b->id }}" name="blocks[{{ $b->id }}][selected]" value="1" @checked($checked)>
+                                    </div>
+                                    <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
+                                        <span class="icon"><i class="{{ $effectiveIcon }}"></i></span>
+                                        <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
+                                    </div>
+                                    <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
+                                    <button type="button"
+                                            class="add-custom-btn"
+                                            data-block-id="{{ $b->id }}"
+                                            data-section-id="{{ $b->section_id ?? ($b->section?->id ?? '') }}">
+                                        add
+                                    </button>
+                                </div>
+                                <div class="finding-details">
+                                    <div class="finding-details-content">
+                                        <div class="form-group">
+                                            <label for="label-{{ $b->id }}">Overstyr Tittel</label>
+                                            <input id="label-{{ $b->id }}" name="blocks[{{ $b->id }}][override_label]" value="{{ $overrideLabel }}" placeholder="{{ $b->label }}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="icon-picker-trigger-{{ $b->id }}">Overstyr Ikon</label>
+                                            <div id="icon-picker-trigger-{{ $b->id }}" class="icon-picker-trigger" tabindex="0">
+                                                <span class="icon-picker-preview"><i data-preview-for="icon-{{ $b->id }}" class="{{ $overrideIcon ?: $b->icon }}"></i></span>
+                                                <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
+                                                <input id="icon-{{ $b->id }}" name="blocks[{{ $b->id }}][override_icon]" type="text" value="{{ $overrideIcon }}">
+                                                <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="text-{{ $b->id }}">Overstyr Standardtekst</label>
+                                            @if(!empty($b->default_text))
+                                            <div class="default-text-wrapper"><p><strong>Standard:</strong> {!! nl2br(e($b->default_text)) !!}</p></div>
+                                            @endif
+                                            <textarea id="text-{{ $b->id }}" name="blocks[{{ $b->id }}][override_text]" rows="4" placeholder="La feltet være tomt for å bruke standardteksten...">{{ $overrideText }}</textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
+                                            @php
+                                                $defaultTips = $templateBlock && $templateBlock->tips_override 
+                                                    ? (is_array($templateBlock->tips_override) ? implode(', ', $templateBlock->tips_override) : $templateBlock->tips_override)
+                                                    : (is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
+                                            @endphp
+                                            @if($defaultTips)
+                                                <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
+                                            @endif
+                                            <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label>Synlighet i rapport</label>
+                                            <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:0.85rem;">
+                                                <label style="display:flex;align-items:center;gap:4px;">
+                                                    <input type="hidden" name="blocks[{{ $b->id }}][show_icon]" value="0">
+                                                    <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ $showIcon ? 'checked' : '' }}>
+                                                    Ikon
+                                                </label>
+                                                <label style="display:flex;align-items:center;gap:4px;">
+                                                    <input type="hidden" name="blocks[{{ $b->id }}][show_label]" value="0">
+                                                    <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ $showLabel ? 'checked' : '' }}>
+                                                    Tittel
+                                                </label>
+                                                <label style="display:flex;align-items:center;gap:4px;">
+                                                    <input type="hidden" name="blocks[{{ $b->id }}][show_text]" value="0">
+                                                    <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ $showText ? 'checked' : '' }}>
+                                                    Tekst
+                                                </label>
+                                                <label style="display:flex;align-items:center;gap:4px;">
+                                                    <input type="hidden" name="blocks[{{ $b->id }}][show_tips]" value="0">
+                                                    <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ $showTips ? 'checked' : '' }}>
+                                                    Tips
+                                                </label>
+                                                <label style="display:flex;align-items:center;gap:4px;">
+                                                    <input type="hidden" name="blocks[{{ $b->id }}][show_severity]" value="0">
+                                                    <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ $showSeverity ? 'checked' : '' }}>
+                                                    Severity
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         @endif
                     @endforeach
                 </div>
@@ -602,6 +616,14 @@ document.addEventListener('DOMContentLoaded', function() {
         // 4) Håndter klikk på seksjonsoverskriften for å kollapse/ekspandere
         const sectionHeader = event.target.closest('.collapsible-section-header');
         if (sectionHeader) {
+            // Ignorer klikk på checkboxer, labels og input-felter
+            if (event.target.matches('input, label, input[type="checkbox"]')) {
+                return;
+            }
+            // Ignorer hvis klikket var inne i et label element
+            if (event.target.closest('label')) {
+                return;
+            }
             sectionHeader.closest('.finding-section').classList.toggle('collapsed');
         }
     });

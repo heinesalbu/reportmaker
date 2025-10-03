@@ -173,117 +173,156 @@ class ProjectController extends Controller
         ]);
     }
 
-    public function saveFindings(Request $request, Project $project)
-    {
-        $validated = $request->validate([
-            'blocks.*.selected'       => 'nullable|boolean',
-            'blocks.*.override_label' => 'nullable|string|max:255',
-            'blocks.*.override_icon'  => 'nullable|string|max:100',
-            'blocks.*.override_text'  => 'nullable|string',
-            'blocks.*.override_tips'  => 'nullable|string',
-            'blocks.*.show_icon'      => 'nullable',
-            'blocks.*.show_label'     => 'nullable',
-            'blocks.*.show_text'      => 'nullable',
-            'blocks.*.show_tips'      => 'nullable',
-            'blocks.*.show_severity'  => 'nullable',
+
+
+public function saveFindings(Request $request, Project $project)
+{
+    // DEBUG: Se hva som faktisk kommer inn
+    \Log::info('=== SAVE FINDINGS DEBUG ===');
+    \Log::info('Project ID: ' . $project->id);
+    \Log::info('Raw input blocks:', $request->input('blocks'));
+    \Log::info('Raw input sections:', $request->input('sections'));
+    
+    $validated = $request->validate([
+        'blocks.*.selected'       => 'nullable|boolean',
+        'blocks.*.override_label' => 'nullable|string|max:255',
+        'blocks.*.override_icon'  => 'nullable|string|max:100',
+        'blocks.*.override_text'  => 'nullable|string',
+        'blocks.*.override_tips'  => 'nullable|string',
+        'blocks.*.show_icon'      => 'nullable',
+        'blocks.*.show_label'     => 'nullable',
+        'blocks.*.show_text'      => 'nullable',
+        'blocks.*.show_tips'      => 'nullable',
+        'blocks.*.show_severity'  => 'nullable',
+        
+        'custom_blocks.*.label'           => 'nullable|string|max:255',
+        'custom_blocks.*.icon'            => 'nullable|string|max:100',
+        'custom_blocks.*.text'            => 'nullable|string',
+        'custom_blocks.*.tips'            => 'nullable|string',
+        'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
+        'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
+        
+        'sections.*.section_id'  => 'nullable|integer|exists:sections,id',  // nullable, ikke required
+        'sections.*.show_title'  => 'nullable',
+    ]);
+
+    \Log::info('Validated blocks:', $validated['blocks'] ?? []);
+
+    \DB::beginTransaction();
+    try {
+        $savedCount = 0;
+        foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
+            $isSelected = isset($blockData['selected']) && $blockData['selected'] == '1';
             
-            'custom_blocks.*.label'           => 'nullable|string|max:255',
-            'custom_blocks.*.icon'            => 'nullable|string|max:100',
-            'custom_blocks.*.text'            => 'nullable|string',
-            'custom_blocks.*.tips'            => 'nullable|string',
-            'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
-            'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
+            \Log::info("Block $blockId: selected = " . ($isSelected ? 'TRUE' : 'FALSE'));
             
-            'sections.*.show_title'   => 'nullable',
-        ]);
+            $updateData = [
+                'selected'       => $isSelected,
+                'override_label' => $blockData['override_label'] ?? null,
+                'override_icon'  => $blockData['override_icon'] ?? null,
+                'override_text'  => $blockData['override_text'] ?? null,
+                'override_tips'  => isset($blockData['override_tips']) && $blockData['override_tips']
+                    ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
+                    : null,
+            ];
 
-        \DB::beginTransaction();
-        try {
-            foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
-                $updateData = [
-                    'selected'       => isset($blockData['selected']) && $blockData['selected'] == '1',
-                    'override_label' => $blockData['override_label'] ?? null,
-                    'override_icon'  => $blockData['override_icon'] ?? null,
-                    'override_text'  => $blockData['override_text'] ?? null,
-                    'override_tips'  => isset($blockData['override_tips']) && $blockData['override_tips']
-                        ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
-                        : null,
-                ];
-
-                foreach (['show_icon', 'show_label', 'show_text', 'show_tips', 'show_severity'] as $field) {
-                    if (isset($blockData[$field])) {
-                        $updateData[$field] = $blockData[$field] === '1' || $blockData[$field] === 1 || $blockData[$field] === true;
-                    } else {
-                        $updateData[$field] = null;
-                    }
-                }
-
-                $project->projectBlocks()->updateOrCreate(
-                    ['block_id' => $blockId],
-                    $updateData
-                );
-            }
-
-            $keepCustomIds = [];
-            foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
-                $tipsArr = null;
-                if (!empty($customData['tips'])) {
-                    $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
-                }
-                
-                $attrs = [
-                    'label'          => $customData['label'] ?? null,
-                    'icon'           => $customData['icon'] ?? null,
-                    'text'           => $customData['text'] ?? null,
-                    'tips'           => $tipsArr,
-                    'severity'       => $customData['severity'] ?? 'info',
-                    'after_block_id' => $customData['after_block_id'] ?? null,
-                ];
-
-                if (str_starts_with((string)$customKey, 'new_')) {
-                    $attrs['project_id'] = $project->id;
-                    if (!empty($customData['after_block_id'])) {
-                        $blockObj = \App\Models\Block::find($customData['after_block_id']);
-                        if ($blockObj) {
-                            $attrs['section_id'] = $blockObj->section_id;
-                        }
-                    }
-                    $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
-                    $keepCustomIds[] = $newBlock->id;
+            foreach (['show_icon', 'show_label', 'show_text', 'show_tips', 'show_severity'] as $field) {
+                if (isset($blockData[$field])) {
+                    $updateData[$field] = $blockData[$field] === '1' || $blockData[$field] === 1 || $blockData[$field] === true;
                 } else {
-                    $cb = \App\Models\ProjectCustomBlock::find($customKey);
-                    if ($cb && $cb->project_id == $project->id) {
-                        $cb->update($attrs);
-                        $keepCustomIds[] = $cb->id;
-                    }
+                    $updateData[$field] = null;
                 }
             }
 
-            \App\Models\ProjectCustomBlock::where('project_id', $project->id)
-                ->whereNotIn('id', $keepCustomIds)
-                ->delete();
-
-            foreach ($validated['sections'] ?? [] as $sectionId => $sectionData) {
-                \App\Models\ProjectSection::updateOrCreate(
-                    [
-                        'project_id' => $project->id,
-                        'section_id' => $sectionId,
-                    ],
-                    [
-                        'show_title' => isset($sectionData['show_title']) && ($sectionData['show_title'] === '1' || $sectionData['show_title'] === 1 || $sectionData['show_title'] === true),
-                    ]
-                );
-            }
-
-            \DB::commit();
-            return back()->with('ok', 'Endringer er lagret');
+            $pb = $project->projectBlocks()->updateOrCreate(
+                ['block_id' => $blockId],
+                $updateData
+            );
             
-        } catch (\Throwable $e) {
-            \DB::rollBack();
-            \Log::error('saveFindings failed: ' . $e->getMessage());
-            return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
+            \Log::info("Saved block $blockId, selected in DB: " . ($pb->selected ? 'TRUE' : 'FALSE'));
+            $savedCount++;
         }
+
+        \Log::info("Total blocks saved: $savedCount");
+
+        // Custom blocks (samme som før)
+        $keepCustomIds = [];
+        foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
+            $tipsArr = null;
+            if (!empty($customData['tips'])) {
+                $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
+            }
+            
+            $attrs = [
+                'label'          => $customData['label'] ?? null,
+                'icon'           => $customData['icon'] ?? null,
+                'text'           => $customData['text'] ?? null,
+                'tips'           => $tipsArr,
+                'severity'       => $customData['severity'] ?? 'info',
+                'after_block_id' => $customData['after_block_id'] ?? null,
+            ];
+
+            if (str_starts_with((string)$customKey, 'new_')) {
+                $attrs['project_id'] = $project->id;
+                if (!empty($customData['after_block_id'])) {
+                    $blockObj = \App\Models\Block::find($customData['after_block_id']);
+                    if ($blockObj) {
+                        $attrs['section_id'] = $blockObj->section_id;
+                    }
+                }
+                $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
+                $keepCustomIds[] = $newBlock->id;
+            } else {
+                $cb = \App\Models\ProjectCustomBlock::find($customKey);
+                if ($cb && $cb->project_id == $project->id) {
+                    $cb->update($attrs);
+                    $keepCustomIds[] = $cb->id;
+                }
+            }
+        }
+
+        \App\Models\ProjectCustomBlock::where('project_id', $project->id)
+            ->whereNotIn('id', $keepCustomIds)
+            ->delete();
+
+        foreach ($validated['sections'] ?? [] as $index => $sectionData) {
+            // Hopp over hvis section_id mangler ELLER er null
+            if (!isset($sectionData['section_id']) || $sectionData['section_id'] === null) {
+                \Log::info("Skipping section at index $index - no valid section_id");
+                continue;
+            }
+            
+            $sectionId = (int)$sectionData['section_id'];
+            
+            // Dobbeltsjekk at seksjonen eksisterer
+            if (!\App\Models\Section::where('id', $sectionId)->exists()) {
+                \Log::warning("Section $sectionId does not exist, skipping");
+                continue;
+            }
+            
+            \Log::info("Saving section $sectionId with show_title = " . ($sectionData['show_title'] ?? 'null'));
+            
+            \App\Models\ProjectSection::updateOrCreate(
+                [
+                    'project_id' => $project->id,
+                    'section_id' => $sectionId,
+                ],
+                [
+                    'show_title' => isset($sectionData['show_title']) && ($sectionData['show_title'] === '1'),
+                ]
+            );
+        }
+
+        \DB::commit();
+        \Log::info('=== SAVE COMPLETE ===');
+        return back()->with('ok', 'Endringer er lagret (se laravel.log for detaljer)');
+        
+    } catch (\Throwable $e) {
+        \DB::rollBack();
+        \Log::error('saveFindings failed: ' . $e->getMessage());
+        return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
     }
+}
     private function buildReportSections(): array
     {
         $sections = \App\Models\Section::with('blocks')->orderBy('order')->get();
