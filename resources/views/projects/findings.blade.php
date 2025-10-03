@@ -125,7 +125,28 @@
     .finding-block {
         max-width: 500px;     /* juster til ønsket bredde */
         width: 100%;
-        
+    }
+
+    /* Custom block style: a bit different background and indent */
+    .custom-block {
+        background-color: #f8f9fc;
+        margin-left: 1rem;
+        border-left: 3px solid #ddd;
+    }
+
+    /* Add button style */
+    .add-custom-btn {
+        margin-left: 0.5rem;
+        font-size: 0.75rem;
+        background-color: #f8f9fa;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 2px 6px;
+        cursor: pointer;
+        color: #555;
+    }
+    .add-custom-btn:hover {
+        background-color: #e9ecef;
     }
     
 </style>
@@ -201,6 +222,13 @@
                                         <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
                                     </div>
                                 <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
+                                <!-- Add custom block button placed after toggle button -->
+                                <button type="button"
+                                        class="add-custom-btn"
+                                        data-block-id="{{ $b->id }}"
+                                        data-section-id="{{ $b->section_id ?? ($b->section?->id ?? '') }}">
+                                    add
+                                </button>
                             </div>
                             <div class="finding-details">
                                 <div class="finding-details-content">
@@ -276,24 +304,93 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // HOVED-LISTENER FOR ALLE KLIKK
+    // Inkluderer toggle av detaljer, kollaps/ekspandere seksjoner, og håndtering av custom blocks
+    let customBlockCounter = 0;
     findingList.addEventListener('click', function(event) {
-        // Håndterer klikk på pluss-knappen
+        // 1) Håndterer klikk på "add custom block"-knappen
+        const addBtn = event.target.closest('.add-custom-btn');
+        if (addBtn) {
+            event.preventDefault();
+            const blockDiv = addBtn.closest('.finding-block');
+            const sectionWrapper = blockDiv.parentNode; // .section-blocks-wrapper
+            const blockId = addBtn.getAttribute('data-block-id');
+            // Generer unik ID for ny custom blokk
+            const uniqueId = 'c' + Date.now() + '_' + (customBlockCounter++);
+            // HTML for custom blokk
+            const customHtml = `
+                <div class="finding-block custom-block">
+                    <div class="finding-block-main">
+                        <div class="finding-col-title">
+                            <span class="icon"><i data-preview-for="icon-${uniqueId}" class=""></i></span>
+                            <label><strong>Custom blokk</strong></label>
+                        </div>
+                        <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">−</div>
+                    </div>
+                    <div class="finding-details active">
+                        <div class="finding-details-content">
+                            <div class="form-group">
+                                <label>Tittel</label>
+                                <input name="custom_blocks[new_${uniqueId}][label]" placeholder="Tittel for blokk">
+                            </div>
+                            <div class="form-group">
+                                <label>Ikon</label>
+                                <div id="icon-picker-trigger-${uniqueId}" class="icon-picker-trigger" tabindex="0">
+                                    <span class="icon-picker-preview"><i data-preview-for="icon-${uniqueId}" class=""></i></span>
+                                    <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
+                                    <input name="custom_blocks[new_${uniqueId}][icon]" type="text" value="">
+                                    <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Tekst</label>
+                                <textarea name="custom_blocks[new_${uniqueId}][text]" rows="4" placeholder="Tekst..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Tips (kommaseparert)</label>
+                                <input name="custom_blocks[new_${uniqueId}][tips]" value="">
+                            </div>
+                            <div class="form-group">
+                                <label>Severity</label>
+                                <select name="custom_blocks[new_${uniqueId}][severity]">
+                                    <option value="info">Info</option>
+                                    <option value="warn">Warn</option>
+                                    <option value="crit">Crit</option>
+                                </select>
+                            </div>
+                            <input type="hidden" name="custom_blocks[new_${uniqueId}][after_block_id]" value="${blockId}">
+                        </div>
+                    </div>
+                </div>`;
+            const temp = document.createElement('div');
+            temp.innerHTML = customHtml.trim();
+            const newBlock = temp.firstElementChild;
+            // Sett inn rett etter gjeldende blokk
+            sectionWrapper.insertBefore(newBlock, blockDiv.nextSibling);
+            // Initialiser ikonvelger for denne nye blokken
+            const newTrigger = newBlock.querySelector('.icon-picker-trigger');
+            if (typeof IconPicker !== 'undefined') {
+                new IconPicker(newTrigger);
+            }
+            return; // avslutt, ikke la andre klikk-handlere trigges
+        }
+
+        // 2) Håndterer klikk på pluss/minus-knappen for å vise/skjule detaljer
         const toggleDetailsBtn = event.target.closest('.toggle-details-btn');
         if (toggleDetailsBtn) {
             const details = toggleDetailsBtn.closest('.finding-block').querySelector('.finding-details');
             details.classList.toggle('active');
             toggleDetailsBtn.textContent = details.classList.contains('active') ? '−' : '+';
-            return; // Stopper her for å unngå at seksjonen også kollapser
+            return; // unngå seksjonskollaps
         }
 
-        // Håndterer klikk på seksjonsoverskriften
+        // 3) Håndterer klikk på seksjonsoverskriften for å kollapse/ekspandere hele seksjonen
         const sectionHeader = event.target.closest('.collapsible-section-header');
         if (sectionHeader) {
             sectionHeader.closest('.finding-section').classList.toggle('collapsed');
         }
     });
 
-    // Initialiserer alle ikonvelgere
+    // Initialiserer alle ikonvelgere som allerede finnes
     const iconTriggers = document.querySelectorAll('.icon-picker-trigger');
     iconTriggers.forEach(trigger => { new IconPicker(trigger); });
 });
