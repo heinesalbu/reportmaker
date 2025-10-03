@@ -129,9 +129,10 @@
 
     /* Custom block style: a bit different background and indent */
     .custom-block {
-        background-color: #f8f9fc;
+        /* Lys blå bakgrunn og innrykk for tilpassede blokker */
+        background-color: #e7f4ff;
         margin-left: 1rem;
-        border-left: 3px solid #ddd;
+        border-left: 3px solid #007bff;
     }
 
     /* Add button style */
@@ -147,6 +148,16 @@
     }
     .add-custom-btn:hover {
         background-color: #e9ecef;
+    }
+
+    /* Fjern-knapp for custom blokker */
+    .remove-custom-btn {
+        margin-left: 0.5rem;
+        font-size: 1rem;
+        color: #e3342f;
+        background: transparent;
+        border: none;
+        cursor: pointer;
     }
     
 </style>
@@ -179,94 +190,150 @@
                 </div>
                 <div class="section-blocks-wrapper">
                     @foreach($blocks as $b)
-                        @php
-                            $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
-                            $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
-                            
-                            // Prioritet: Project override → Template override → Block default
-                            $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
-                            
-                            $overrideLabel = old("blocks.{$b->id}.override_label", 
-                                $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
-                            
-                            $overrideIcon = old("blocks.{$b->id}.override_icon", 
-                                $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
-                            
-                            $overrideText = old("blocks.{$b->id}.override_text", 
-                                $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
-                            
-                            // Tips håndtering
-                            $projectTips = is_array($projectBlock?->override_tips) 
-                                ? implode(', ', $projectBlock->override_tips) 
-                                : ($projectBlock?->override_tips ?? '');
-                            
-                            $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
-                                ? implode(', ', $templateBlock->tips_override) 
-                                : ($templateBlock?->tips_override ?? '');
-                            
-                            $overrideTips = old("blocks.{$b->id}.override_tips", 
-                                $projectTips ?: $templateTips);
-                            
-                            // Effektive verdier for visning (det som faktisk vises)
-                            $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
-                            $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
-                        @endphp
-                        <div class="finding-block">
-                            <div class="finding-block-main">
-                                <div class="finding-col-select">
-                                    <input type="hidden" name="blocks[{{ $b->id }}][selected]" value="0">
-                                    <input type="checkbox" id="cb-{{ $b->id }}" name="blocks[{{ $b->id }}][selected]" value="1" @checked($checked)>
+                        @if ($b instanceof \App\Models\ProjectCustomBlock)
+                            @php
+                                // Generer unikt ID for custom blokk-elementer
+                                $uniqueId = 'cust'.$b->id;
+                                $customLabel = old("custom_blocks.{$b->id}.label", $b->label);
+                                $customIcon  = old("custom_blocks.{$b->id}.icon", $b->icon);
+                                $customText  = old("custom_blocks.{$b->id}.text", $b->text);
+                                $customTips  = old("custom_blocks.{$b->id}.tips", is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
+                                $customSeverity = old("custom_blocks.{$b->id}.severity", $b->severity ?: 'info');
+                            @endphp
+                            <div class="finding-block custom-block">
+                                <div class="finding-block-main">
+                                    <div class="finding-col-title">
+                                        <span class="icon"><i data-preview-for="icon-{{ $uniqueId }}" class="{{ $customIcon }}"></i></span>
+                                        <label><strong>{{ $customLabel ?: __('Custom blokk') }}</strong></label>
+                                    </div>
+                                    <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
+                                    <button type="button" class="remove-custom-btn" data-custom-id="{{ $b->id }}" title="Fjern blokk">×</button>
                                 </div>
-                                    <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
-                                        <span class="icon"><i class="{{ $effectiveIcon }}"></i></span>
-                                        <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
-                                    </div>
-                                <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
-                                <!-- Add custom block button placed after toggle button -->
-                                <button type="button"
-                                        class="add-custom-btn"
-                                        data-block-id="{{ $b->id }}"
-                                        data-section-id="{{ $b->section_id ?? ($b->section?->id ?? '') }}">
-                                    add
-                                </button>
-                            </div>
-                            <div class="finding-details">
-                                <div class="finding-details-content">
-                                    <div class="form-group">
-                                        <label for="label-{{ $b->id }}">Overstyr Tittel</label>
-                                        <input id="label-{{ $b->id }}" name="blocks[{{ $b->id }}][override_label]" value="{{ $overrideLabel }}" placeholder="{{ $b->label }}">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="icon-picker-trigger-{{ $b->id }}">Overstyr Ikon</label>
-                                        <div id="icon-picker-trigger-{{ $b->id }}" class="icon-picker-trigger" tabindex="0">
-                                            <span class="icon-picker-preview"><i data-preview-for="icon-{{ $b->id }}" class="{{ $overrideIcon ?: $b->icon }}"></i></span>
-                                            <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
-                                            <input id="icon-{{ $b->id }}" name="blocks[{{ $b->id }}][override_icon]" type="text" value="{{ $overrideIcon }}">
-                                            <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="text-{{ $b->id }}">Overstyr Standardtekst</label>
-                                        @if(!empty($b->default_text))
-                                        <div class="default-text-wrapper"><p><strong>Standard:</strong> {!! nl2br(e($b->default_text)) !!}</p></div>
-                                        @endif
-                                        <textarea id="text-{{ $b->id }}" name="blocks[{{ $b->id }}][override_text]" rows="4" placeholder="La feltet være tomt for å bruke standardteksten...">{{ $overrideText }}</textarea>
-                                    </div>
+                                <div class="finding-details">
+                                    <div class="finding-details-content">
                                         <div class="form-group">
-                                            <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
-                                            @php
-                                                $defaultTips = $templateBlock && $templateBlock->tips_override 
-                                                    ? (is_array($templateBlock->tips_override) ? implode(', ', $templateBlock->tips_override) : $templateBlock->tips_override)
-                                                    : (is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
-                                            @endphp
-                                            @if($defaultTips)
-                                                <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
-                                            @endif
-                                            <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
+                                            <label>Tittel</label>
+                                            <input name="custom_blocks[{{ $b->id }}][label]" value="{{ $customLabel }}" placeholder="Tittel for blokk">
                                         </div>
+                                        <div class="form-group">
+                                            <label>Ikon</label>
+                                            <div id="icon-picker-trigger-{{ $uniqueId }}" class="icon-picker-trigger" tabindex="0">
+                                                <span class="icon-picker-preview"><i data-preview-for="icon-{{ $uniqueId }}" class="{{ $customIcon }}"></i></span>
+                                                <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
+                                                <input id="icon-{{ $uniqueId }}" name="custom_blocks[{{ $b->id }}][icon]" type="text" value="{{ $customIcon }}">
+                                                <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Tekst</label>
+                                            <textarea name="custom_blocks[{{ $b->id }}][text]" rows="4" placeholder="Tekst...">{{ $customText }}</textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Tips (kommaseparert)</label>
+                                            <input name="custom_blocks[{{ $b->id }}][tips]" value="{{ $customTips }}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Severity</label>
+                                            <select name="custom_blocks[{{ $b->id }}][severity]">
+                                                <option value="info"  @selected($customSeverity === 'info')>Info</option>
+                                                <option value="warn"  @selected($customSeverity === 'warn')>Warn</option>
+                                                <option value="crit"  @selected($customSeverity === 'crit')>Crit</option>
+                                            </select>
+                                        </div>
+                                        <input type="hidden" name="custom_blocks[{{ $b->id }}][after_block_id]" value="{{ $b->after_block_id }}">
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        @else
+                            @php
+                                $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
+                                $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
+                                
+                                // Prioritet: Project override → Template override → Block default
+                                $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
+                                
+                                $overrideLabel = old("blocks.{$b->id}.override_label", 
+                                    $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
+                                
+                                $overrideIcon = old("blocks.{$b->id}.override_icon", 
+                                    $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
+                                
+                                $overrideText = old("blocks.{$b->id}.override_text", 
+                                    $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
+                                
+                                // Tips håndtering
+                                $projectTips = is_array($projectBlock?->override_tips) 
+                                    ? implode(', ', $projectBlock->override_tips) 
+                                    : ($projectBlock?->override_tips ?? '');
+                                
+                                $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
+                                    ? implode(', ', $templateBlock->tips_override) 
+                                    : ($templateBlock?->tips_override ?? '');
+                                
+                                $overrideTips = old("blocks.{$b->id}.override_tips", 
+                                    $projectTips ?: $templateTips);
+                                
+                                // Effektive verdier for visning (det som faktisk vises)
+                                $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
+                                $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
+                            @endphp
+                            <div class="finding-block">
+                                <div class="finding-block-main">
+                                    <div class="finding-col-select">
+                                        <input type="hidden" name="blocks[{{ $b->id }}][selected]" value="0">
+                                        <input type="checkbox" id="cb-{{ $b->id }}" name="blocks[{{ $b->id }}][selected]" value="1" @checked($checked)>
+                                    </div>
+                                        <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
+                                            <span class="icon"><i class="{{ $effectiveIcon }}"></i></span>
+                                            <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
+                                        </div>
+                                    <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
+                                    <!-- Add custom block button placed after toggle button -->
+                                    <button type="button"
+                                            class="add-custom-btn"
+                                            data-block-id="{{ $b->id }}"
+                                            data-section-id="{{ $b->section_id ?? ($b->section?->id ?? '') }}">
+                                        add
+                                    </button>
+                                </div>
+                                <div class="finding-details">
+                                    <div class="finding-details-content">
+                                        <div class="form-group">
+                                            <label for="label-{{ $b->id }}">Overstyr Tittel</label>
+                                            <input id="label-{{ $b->id }}" name="blocks[{{ $b->id }}][override_label]" value="{{ $overrideLabel }}" placeholder="{{ $b->label }}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="icon-picker-trigger-{{ $b->id }}">Overstyr Ikon</label>
+                                            <div id="icon-picker-trigger-{{ $b->id }}" class="icon-picker-trigger" tabindex="0">
+                                                <span class="icon-picker-preview"><i data-preview-for="icon-{{ $b->id }}" class="{{ $overrideIcon ?: $b->icon }}"></i></span>
+                                                <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
+                                                <input id="icon-{{ $b->id }}" name="blocks[{{ $b->id }}][override_icon]" type="text" value="{{ $overrideIcon }}">
+                                                <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="text-{{ $b->id }}">Overstyr Standardtekst</label>
+                                            @if(!empty($b->default_text))
+                                            <div class="default-text-wrapper"><p><strong>Standard:</strong> {!! nl2br(e($b->default_text)) !!}</p></div>
+                                            @endif
+                                            <textarea id="text-{{ $b->id }}" name="blocks[{{ $b->id }}][override_text]" rows="4" placeholder="La feltet være tomt for å bruke standardteksten...">{{ $overrideText }}</textarea>
+                                        </div>
+                                            <div class="form-group">
+                                                <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
+                                                @php
+                                                    $defaultTips = $templateBlock && $templateBlock->tips_override 
+                                                        ? (is_array($templateBlock->tips_override) ? implode(', ', $templateBlock->tips_override) : $templateBlock->tips_override)
+                                                        : (is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
+                                                @endphp
+                                                @if($defaultTips)
+                                                    <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
+                                                @endif
+                                                <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
+                                            </div>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
                     @endforeach
                 </div>
             </section>
@@ -307,7 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Inkluderer toggle av detaljer, kollaps/ekspandere seksjoner, og håndtering av custom blocks
     let customBlockCounter = 0;
     findingList.addEventListener('click', function(event) {
-        // 1) Håndterer klikk på "add custom block"-knappen
+        // 1) Håndter klikk på "add custom block"-knappen
         const addBtn = event.target.closest('.add-custom-btn');
         if (addBtn) {
             event.preventDefault();
@@ -316,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const blockId = addBtn.getAttribute('data-block-id');
             // Generer unik ID for ny custom blokk
             const uniqueId = 'c' + Date.now() + '_' + (customBlockCounter++);
-            // HTML for custom blokk
+            // Lag HTML for en ny custom blokk
             const customHtml = `
                 <div class="finding-block custom-block">
                     <div class="finding-block-main">
@@ -324,9 +391,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="icon"><i data-preview-for="icon-${uniqueId}" class=""></i></span>
                             <label><strong>Custom blokk</strong></label>
                         </div>
-                        <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">−</div>
+                        <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
+                        <button type="button" class="remove-custom-btn" title="Fjern blokk">×</button>
                     </div>
-                    <div class="finding-details active">
+                    <div class="finding-details">   
                         <div class="finding-details-content">
                             <div class="form-group">
                                 <label>Tittel</label>
@@ -337,7 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div id="icon-picker-trigger-${uniqueId}" class="icon-picker-trigger" tabindex="0">
                                     <span class="icon-picker-preview"><i data-preview-for="icon-${uniqueId}" class=""></i></span>
                                     <span class="icon-picker-placeholder">Klikk for å velge et ikon</span>
-                                    <input name="custom_blocks[new_${uniqueId}][icon]" type="text" value="">
+                                    <input id="icon-${uniqueId}" name="custom_blocks[new_${uniqueId}][icon]" type="text" value="">
                                     <div class="icon-picker-clear" title="Fjern ikon">&times;</div>
                                 </div>
                             </div>
@@ -364,26 +432,37 @@ document.addEventListener('DOMContentLoaded', function() {
             const temp = document.createElement('div');
             temp.innerHTML = customHtml.trim();
             const newBlock = temp.firstElementChild;
-            // Sett inn rett etter gjeldende blokk
+            // Sett inn den nye blokken rett etter gjeldende blokk
             sectionWrapper.insertBefore(newBlock, blockDiv.nextSibling);
-            // Initialiser ikonvelger for denne nye blokken
+            // Initialiser ikonvelger for nye blokker
             const newTrigger = newBlock.querySelector('.icon-picker-trigger');
             if (typeof IconPicker !== 'undefined') {
                 new IconPicker(newTrigger);
             }
-            return; // avslutt, ikke la andre klikk-handlere trigges
+            return; // Stopper her så andre klikk-handlere ikke trigges
         }
 
-        // 2) Håndterer klikk på pluss/minus-knappen for å vise/skjule detaljer
+        // 2) Håndter klikk på fjern-knapp for custom blokker
+        const removeBtn = event.target.closest('.remove-custom-btn');
+        if (removeBtn) {
+            event.preventDefault();
+            const blockElement = removeBtn.closest('.finding-block');
+            if (blockElement) {
+                blockElement.remove();
+            }
+            return;
+        }
+
+        // 3) Håndter klikk på pluss/minus for å vise/skjule detaljer
         const toggleDetailsBtn = event.target.closest('.toggle-details-btn');
         if (toggleDetailsBtn) {
             const details = toggleDetailsBtn.closest('.finding-block').querySelector('.finding-details');
             details.classList.toggle('active');
             toggleDetailsBtn.textContent = details.classList.contains('active') ? '−' : '+';
-            return; // unngå seksjonskollaps
+            return;
         }
 
-        // 3) Håndterer klikk på seksjonsoverskriften for å kollapse/ekspandere hele seksjonen
+        // 4) Håndter klikk på seksjonsoverskriften for å kollapse/ekspandere
         const sectionHeader = event.target.closest('.collapsible-section-header');
         if (sectionHeader) {
             sectionHeader.closest('.finding-section').classList.toggle('collapsed');

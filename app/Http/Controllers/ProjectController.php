@@ -123,153 +123,145 @@ class ProjectController extends Controller
 
 
 
-public function findings(Project $project)
-{
-    // Prosjektet må ha en mal
-    if (!$project->template_id) {
-        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
-    }
-
-    // Last prosjektets egne overstyringer (project_blocks) og eventuelle custom blocks
-    $project->load('projectBlocks', 'customBlocks');
-
-    // Hent seksjoner knyttet til prosjektets mal, sortert på seksjonenes 'order'.
-    // For hver seksjon henter vi også blokkene sortert på blokkens 'order'.
-    $sections = Section::whereHas('templates', function ($query) use ($project) {
-            $query->where('template_id', $project->template_id);
-        })
-        ->orderBy('order')
-        ->with(['blocks' => function ($query) {
-            $query->orderBy('order');
-        }])
-        ->get();
-
-    // Hent malens overrides for seksjonstitler og blokk-verdier.
-    // Dette brukes når viewet skal velge riktig label/ikon/tekst/tips.
-    [$templateSections, $templateBlocks] = $this->templateMaps($project);
-    // templateMaps() finnes allerede i ProjectController. Den returnerer:
-    // [TemplateSections keyed by section_id, TemplateBlocks keyed by block_id]
-
-    // Bygg opp en collection av seksjonsnavn => blokker (+ custom blocks)
-    $groupedBlocks = collect();
-    foreach ($sections as $section) {
-        $items = collect();
-
-        foreach ($section->blocks as $block) {
-            $items->push($block);
-
-            // Legg til custom-blocks som skal komme etter denne blokken
-            $customsAfter = $project->customBlocks
-                ->where('after_block_id', $block->id)
-                ->sortBy('order');
-            foreach ($customsAfter as $custom) {
-                $items->push($custom);
-            }
+    public function findings(Project $project)
+    {
+        // Prosjektet må ha en mal
+        if (!$project->template_id) {
+            return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
         }
 
-        // Seksjonens visningsnavn: malens title_override hvis definert, ellers standard label
-        $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
+        // Last prosjektets egne overstyringer (project_blocks) og eventuelle custom blocks
+        $project->load('projectBlocks', 'customBlocks');
 
-        $groupedBlocks->put($sectionTitle, $items);
-    }
+        // Hent seksjoner knyttet til prosjektets mal, sortert på seksjonenes 'order'.
+        // For hver seksjon henter vi også blokkene sortert på blokkens 'order'.
+        $sections = Section::whereHas('templates', function ($query) use ($project) {
+                $query->where('template_id', $project->template_id);
+            })
+            ->orderBy('order')
+            ->with(['blocks' => function ($query) {
+                $query->orderBy('order');
+            }])
+            ->get();
 
-    return view('projects.findings', [
-        'project'         => $project,
-        'groupedBlocks'   => $groupedBlocks,
-        // Send med malens overrides til Blade slik at de brukes når du skriver ut label, ikon, tekst, tips.
-        'templateBlocks'  => $templateBlocks,
-        'templateSections'=> $templateSections,
-    ]);
-}
+        // Hent malens overrides for seksjonstitler og blokk-verdier.
+        // Dette brukes når viewet skal velge riktig label/ikon/tekst/tips.
+        [$templateSections, $templateBlocks] = $this->templateMaps($project);
+        // templateMaps() finnes allerede i ProjectController. Den returnerer:
+        // [TemplateSections keyed by section_id, TemplateBlocks keyed by block_id]
 
+        // Bygg opp en collection av seksjonsnavn => blokker (+ custom blocks)
+        $groupedBlocks = collect();
+        foreach ($sections as $section) {
+            $items = collect();
 
+            foreach ($section->blocks as $block) {
+                $items->push($block);
 
-
-
-
-    // in app/Http/Controllers/ProjectController.php
-
-public function saveFindings(Request $request, Project $project)
-{
-    $validated = $request->validate([
-        // Valider standard blokker (overrides)
-        'blocks.*.selected'       => 'boolean',
-        'blocks.*.override_label' => 'nullable|string|max:255',
-        'blocks.*.override_icon'  => 'nullable|string|max:100',
-        'blocks.*.override_text'  => 'nullable|string',
-        'blocks.*.override_tips'  => 'nullable|string',
-        // Valider custom blocks
-        'custom_blocks.*.label'           => 'nullable|string|max:255',
-        'custom_blocks.*.icon'            => 'nullable|string|max:100',
-        'custom_blocks.*.text'            => 'nullable|string',
-        'custom_blocks.*.tips'            => 'nullable|string',
-        'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
-        'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
-    ]);
-
-    // Lagre/oppdater standard blokker
-    foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
-        $project->projectBlocks()->updateOrCreate(
-            ['block_id' => $blockId],
-            [
-                'selected'       => $blockData['selected'] ?? false,
-                'override_label' => $blockData['override_label'],
-                'override_icon'  => $blockData['override_icon'],
-                'override_text'  => $blockData['override_text'],
-                'override_tips'  => $blockData['override_tips']
-                    ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
-                    : null,
-            ]
-        );
-    }
-
-    // Håndter custom blocks
-    $processedCustomIds = [];
-    foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
-        // Normaliser tips til array
-        $tipsArr = null;
-        if (!empty($customData['tips'])) {
-            $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
-        }
-        $attrs = [
-            'label'      => $customData['label']      ?? null,
-            'icon'       => $customData['icon']       ?? null,
-            'text'       => $customData['text']       ?? null,
-            'tips'       => $tipsArr,
-            'severity'   => $customData['severity']   ?? 'info',
-            'after_block_id' => $customData['after_block_id'] ?? null,
-        ];
-
-        // Nye blokker: nøkkel begynner med "new_"
-        if (str_starts_with((string)$customKey, 'new_')) {
-            $attrs['project_id'] = $project->id;
-            // Finn seksjons‑ID fra blokk ID
-            if (!empty($customData['after_block_id'])) {
-                $blockObj = \App\Models\Block::find($customData['after_block_id']);
-                if ($blockObj) {
-                    $attrs['section_id'] = $blockObj->section_id;
+                // Legg til custom-blocks som skal komme etter denne blokken
+                $customsAfter = $project->customBlocks
+                    ->where('after_block_id', $block->id)
+                    ->sortBy('order');
+                foreach ($customsAfter as $custom) {
+                    $items->push($custom);
                 }
             }
-            \App\Models\ProjectCustomBlock::create($attrs);
-        } else {
-            // Eksisterende custom‑block
-            $cb = \App\Models\ProjectCustomBlock::find($customKey);
-            if ($cb && $cb->project_id == $project->id) {
-                $cb->update($attrs);
-                $processedCustomIds[] = $cb->id;
+
+            // Seksjonens visningsnavn: malens title_override hvis definert, ellers standard label
+            $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
+
+            $groupedBlocks->put($sectionTitle, $items);
+        }
+
+        return view('projects.findings', [
+            'project'         => $project,
+            'groupedBlocks'   => $groupedBlocks,
+            // Send med malens overrides til Blade slik at de brukes når du skriver ut label, ikon, tekst, tips.
+            'templateBlocks'  => $templateBlocks,
+            'templateSections'=> $templateSections,
+        ]);
+    }
+
+        // in app/Http/Controllers/ProjectController.php
+
+    public function saveFindings(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'blocks.*.selected'       => 'boolean',
+            'blocks.*.override_label' => 'nullable|string|max:255',
+            'blocks.*.override_icon'  => 'nullable|string|max:100',
+            'blocks.*.override_text'  => 'nullable|string',
+            'blocks.*.override_tips'  => 'nullable|string',
+            'custom_blocks.*.label'           => 'nullable|string|max:255',
+            'custom_blocks.*.icon'            => 'nullable|string|max:100',
+            'custom_blocks.*.text'            => 'nullable|string',
+            'custom_blocks.*.tips'            => 'nullable|string',
+            'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
+            'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
+        ]);
+
+        // Lagre standard blokker
+        foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
+            $project->projectBlocks()->updateOrCreate(
+                ['block_id' => $blockId],
+                [
+                    'selected'       => $blockData['selected'] ?? false,
+                    'override_label' => $blockData['override_label'],
+                    'override_icon'  => $blockData['override_icon'],
+                    'override_text'  => $blockData['override_text'],
+                    'override_tips'  => $blockData['override_tips']
+                        ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
+                        : null,
+                ]
+            );
+        }
+
+        // Samle alle custom block IDs som skal beholdes
+        $keepCustomIds = [];
+        
+        foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
+            $tipsArr = null;
+            if (!empty($customData['tips'])) {
+                $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
+            }
+            
+            $attrs = [
+                'label'          => $customData['label'] ?? null,
+                'icon'           => $customData['icon'] ?? null,
+                'text'           => $customData['text'] ?? null,
+                'tips'           => $tipsArr,
+                'severity'       => $customData['severity'] ?? 'info',
+                'after_block_id' => $customData['after_block_id'] ?? null,
+            ];
+
+            if (str_starts_with((string)$customKey, 'new_')) {
+                // Ny custom block
+                $attrs['project_id'] = $project->id;
+                if (!empty($customData['after_block_id'])) {
+                    $blockObj = \App\Models\Block::find($customData['after_block_id']);
+                    if ($blockObj) {
+                        $attrs['section_id'] = $blockObj->section_id;
+                    }
+                }
+                $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
+                $keepCustomIds[] = $newBlock->id;
+            } else {
+                // Eksisterende custom block
+                $cb = \App\Models\ProjectCustomBlock::find($customKey);
+                if ($cb && $cb->project_id == $project->id) {
+                    $cb->update($attrs);
+                    $keepCustomIds[] = $cb->id;
+                }
             }
         }
-    }
 
-    // Valgfritt: slett custom‑blokker som ikke ble sendt inn (f.eks. hvis bruker har fjernet dem)
-    if (!empty($processedCustomIds)) {
+        // Slett custom blocks som ikke lenger er i skjemaet
         \App\Models\ProjectCustomBlock::where('project_id', $project->id)
-            ->whereNotIn('id', $processedCustomIds)
+            ->whereNotIn('id', $keepCustomIds)
             ->delete();
-    }
 
-    return back()->with('ok', 'Endringer er lagret');
-}
+        return back()->with('ok', 'Endringer er lagret');
+    }
 
 
 
@@ -288,10 +280,9 @@ public function saveFindings(Request $request, Project $project)
         }])->orderBy('order')->get();
 
         $company = $this->companyInfo();
-        $project->load('projectBlocks');
+        $project->load('projectBlocks', 'customBlocks'); // LEGG TIL customBlocks
         $pb = $project->projectBlocks->keyBy('block_id');
 
-        // Hent malens overrides
         $templateSections = collect();
         $templateBlocks = collect();
         if ($project->template_id) {
@@ -304,11 +295,11 @@ public function saveFindings(Request $request, Project $project)
         $reportSections = [];
         foreach ($sections as $s) {
             $chosen = [];
+            
             foreach ($s->blocks as $b) {
                 $row = $pb->get($b->id);
                 if (!$row || !$row->selected) continue;
 
-                // Hent mal-overrides for denne blokken
                 $tb = $templateBlocks->get($b->id);
 
                 $chosen[] = [
@@ -321,6 +312,21 @@ public function saveFindings(Request $request, Project $project)
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
                 ];
+
+                // LEGG TIL custom blocks etter denne blokken
+                $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
+                foreach ($customsAfter as $custom) {
+                    $chosen[] = [
+                        'icon'     => $custom->icon,
+                        'label'    => $custom->label,
+                        'severity' => $custom->severity ?? 'info',
+                        'text'     => $custom->text,
+                        'tips'     => $custom->tips,
+                        'refs'     => null,
+                        'tags'     => null,
+                        '_order'   => (int)($b->order ?? 0) + 0.5, // Mellom hovedblokk og neste
+                    ];
+                }
             }
 
             if ($chosen) {
@@ -353,10 +359,9 @@ public function saveFindings(Request $request, Project $project)
         }])->orderBy('order')->get();
 
         $company = $this->companyInfo();
-        $project->load('projectBlocks');
+        $project->load('projectBlocks', 'customBlocks');
         $pb = $project->projectBlocks->keyBy('block_id');
 
-        // Hent malens overrides
         $templateSections = collect();
         $templateBlocks = collect();
         if ($project->template_id) {
@@ -369,11 +374,11 @@ public function saveFindings(Request $request, Project $project)
         $reportSections = [];
         foreach ($sections as $s) {
             $chosen = [];
+            
             foreach ($s->blocks as $b) {
                 $row = $pb->get($b->id);
                 if (!$row || !$row->selected) continue;
 
-                // Hent mal-overrides for denne blokken
                 $tb = $templateBlocks->get($b->id);
 
                 $chosen[] = [
@@ -386,6 +391,21 @@ public function saveFindings(Request $request, Project $project)
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
                 ];
+
+                // Legg til custom blocks etter denne blokken
+                $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
+                foreach ($customsAfter as $custom) {
+                    $chosen[] = [
+                        'icon'     => $custom->icon,
+                        'label'    => $custom->label,
+                        'severity' => $custom->severity ?? 'info',
+                        'text'     => $custom->text,
+                        'tips'     => $custom->tips,
+                        'refs'     => null,
+                        'tags'     => null,
+                        '_order'   => (int)($b->order ?? 0) + 0.5,
+                    ];
+                }
             }
 
             if ($chosen) {
