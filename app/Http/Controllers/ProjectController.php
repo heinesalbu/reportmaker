@@ -123,45 +123,67 @@ class ProjectController extends Controller
 
 
 
-    public function findings(Project $project)
-    {
-        if (!$project->template_id) {
-            return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
-        }
-
-        $project->load('projectBlocks', 'customBlocks');
-
-        $orderedSections = \App\Models\Section::orderBy('order', 'asc')
-            ->whereHas('templates', function ($query) use ($project) {
-                $query->where('template_id', '>', 0);
-            })
-            ->with(['blocks' => function ($query) {
-                $query->orderBy('order', 'asc');
-            }])
-            ->get();
-
-        // Lag en ny collection som kan endres
-        $groupedAndSorted = collect();
-
-        foreach ($orderedSections as $section) {
-            $items = collect();
-            // Legg til standardblokker
-            foreach ($section->blocks as $block) {
-                $items->push($block);
-                // Legg til custom-blokker som skal komme etter denne standardblokken
-                $customsAfter = $project->customBlocks->where('after_block_id', $block->id)->sortBy('order');
-                foreach ($customsAfter as $custom) {
-                    $items->push($custom);
-                }
-            }
-            $groupedAndSorted[$section->label] = $items;
-        }
-
-        return view('projects.findings', [
-            'project' => $project,
-            'groupedBlocks' => $groupedAndSorted,
-        ]);
+public function findings(Project $project)
+{
+    // Prosjektet må ha en mal
+    if (!$project->template_id) {
+        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
     }
+
+    // Last prosjektets egne overstyringer (project_blocks) og eventuelle custom blocks
+    $project->load('projectBlocks', 'customBlocks');
+
+    // Hent seksjoner knyttet til prosjektets mal, sortert på seksjonenes 'order'.
+    // For hver seksjon henter vi også blokkene sortert på blokkens 'order'.
+    $sections = Section::whereHas('templates', function ($query) use ($project) {
+            $query->where('template_id', $project->template_id);
+        })
+        ->orderBy('order')
+        ->with(['blocks' => function ($query) {
+            $query->orderBy('order');
+        }])
+        ->get();
+
+    // Hent malens overrides for seksjonstitler og blokk-verdier.
+    // Dette brukes når viewet skal velge riktig label/ikon/tekst/tips.
+    [$templateSections, $templateBlocks] = $this->templateMaps($project);
+    // templateMaps() finnes allerede i ProjectController. Den returnerer:
+    // [TemplateSections keyed by section_id, TemplateBlocks keyed by block_id]
+
+    // Bygg opp en collection av seksjonsnavn => blokker (+ custom blocks)
+    $groupedBlocks = collect();
+    foreach ($sections as $section) {
+        $items = collect();
+
+        foreach ($section->blocks as $block) {
+            $items->push($block);
+
+            // Legg til custom-blocks som skal komme etter denne blokken
+            $customsAfter = $project->customBlocks
+                ->where('after_block_id', $block->id)
+                ->sortBy('order');
+            foreach ($customsAfter as $custom) {
+                $items->push($custom);
+            }
+        }
+
+        // Seksjonens visningsnavn: malens title_override hvis definert, ellers standard label
+        $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
+
+        $groupedBlocks->put($sectionTitle, $items);
+    }
+
+    return view('projects.findings', [
+        'project'         => $project,
+        'groupedBlocks'   => $groupedBlocks,
+        // Send med malens overrides til Blade slik at de brukes når du skriver ut label, ikon, tekst, tips.
+        'templateBlocks'  => $templateBlocks,
+        'templateSections'=> $templateSections,
+    ]);
+}
+
+
+
 
 
 
@@ -170,47 +192,48 @@ class ProjectController extends Controller
 public function saveFindings(Request $request, Project $project)
 {
     $validated = $request->validate([
-        'blocks.*.selected' => 'boolean',
+        // Standard blokker
+        'blocks.*.selected'       => 'boolean',
         'blocks.*.override_label' => 'nullable|string|max:255',
-        'blocks.*.override_icon' => 'nullable|string|max:100',
-        'blocks.*.override_text' => 'nullable|string',
-        'blocks.*.override_tips' => 'nullable|string',
-        // Validering for custom-blokker
-        'custom_blocks.*.label' => 'required|string|max:255',
-        'custom_blocks.*.icon' => 'nullable|string|max:100',
-        'custom_blocks.*.text' => 'nullable|string',
-        'custom_blocks.*.tips' => 'nullable|string',
+        'blocks.*.override_icon'  => 'nullable|string|max:100',
+        'blocks.*.override_text'  => 'nullable|string',
+        'blocks.*.override_tips'  => 'nullable|string',
+        // (Valgfritt) Validering for custom blocks:
+        'custom_blocks.*.label'    => 'required|string|max:255',
+        'custom_blocks.*.icon'     => 'nullable|string|max:100',
+        'custom_blocks.*.text'     => 'nullable|string',
+        'custom_blocks.*.tips'     => 'nullable|string',
         'custom_blocks.*.severity' => 'required|in:info,warn,crit',
     ]);
 
-    // Lagre standard blokk-overstyringer
-    if (isset($validated['blocks'])) {
-        foreach ($validated['blocks'] as $blockId => $blockData) {
-            $project->projectBlocks()->updateOrCreate(
-                ['block_id' => $blockId],
-                [
-                    'selected' => $blockData['selected'] ?? false,
-                    'override_label' => $blockData['override_label'],
-                    'override_icon' => $blockData['override_icon'],
-                    'override_text' => $blockData['override_text'],
-                    'override_tips' => $blockData['override_tips'] ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips'])))) : null,
-                ]
-            );
-        }
+    // Lagre/oppdater standardblokker
+    foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
+        $project->projectBlocks()->updateOrCreate(
+            ['block_id' => $blockId],
+            [
+                'selected'       => $blockData['selected'] ?? false,
+                'override_label' => $blockData['override_label'],
+                'override_icon'  => $blockData['override_icon'],
+                'override_text'  => $blockData['override_text'],
+                'override_tips'  => $blockData['override_tips']
+                    ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
+                    : null,
+            ]
+        );
     }
 
-    // Lagre custom-blokker
-    if (isset($validated['custom_blocks'])) {
-        foreach ($validated['custom_blocks'] as $customBlockId => $customBlockData) {
-            $customBlock = ProjectCustomBlock::find($customBlockId);
-            if ($customBlock && $customBlock->project_id === $project->id) {
-                $customBlock->update($customBlockData);
-            }
+    // (Valgfritt) Oppdater eksisterende custom blocks
+    foreach ($validated['custom_blocks'] ?? [] as $customId => $customData) {
+        $custom = ProjectCustomBlock::find($customId);
+        if ($custom && $custom->project_id === $project->id) {
+            $custom->update($customData);
         }
     }
 
     return back()->with('ok', 'Endringer er lagret');
 }
+
+
 
 
     private function buildReportSections(): array

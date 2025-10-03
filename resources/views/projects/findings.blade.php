@@ -160,13 +160,35 @@
                     @foreach($blocks as $b)
                         @php
                             $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
-                            $templateBlock = $templateBlocks->get($b->id);
+                            $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
                             
+                            // Prioritet: Project override → Template override → Block default
                             $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
-                            $overrideLabel = old("blocks.{$b->id}.override_label", $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
-                            $overrideIcon = old("blocks.{$b->id}.override_icon", $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
-                            $overrideText = old("blocks.{$b->id}.override_text", $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
-                            $overrideTips = old("blocks.{$b->id}.override_tips", is_array($projectBlock?->override_tips) ? implode(', ', $projectBlock->override_tips) : ($projectBlock?->override_tips ?? (is_array($templateBlock?->tips_override) ? implode(', ', $templateBlock->tips_override) : '')));
+                            
+                            $overrideLabel = old("blocks.{$b->id}.override_label", 
+                                $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
+                            
+                            $overrideIcon = old("blocks.{$b->id}.override_icon", 
+                                $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
+                            
+                            $overrideText = old("blocks.{$b->id}.override_text", 
+                                $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
+                            
+                            // Tips håndtering
+                            $projectTips = is_array($projectBlock?->override_tips) 
+                                ? implode(', ', $projectBlock->override_tips) 
+                                : ($projectBlock?->override_tips ?? '');
+                            
+                            $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
+                                ? implode(', ', $templateBlock->tips_override) 
+                                : ($templateBlock?->tips_override ?? '');
+                            
+                            $overrideTips = old("blocks.{$b->id}.override_tips", 
+                                $projectTips ?: $templateTips);
+                            
+                            // Effektive verdier for visning (det som faktisk vises)
+                            $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
+                            $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
                         @endphp
                         <div class="finding-block">
                             <div class="finding-block-main">
@@ -174,10 +196,10 @@
                                     <input type="hidden" name="blocks[{{ $b->id }}][selected]" value="0">
                                     <input type="checkbox" id="cb-{{ $b->id }}" name="blocks[{{ $b->id }}][selected]" value="1" @checked($checked)>
                                 </div>
-                                <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
-                                    <span class="icon"><i class="{{ $overrideIcon ?: $b->icon }}"></i></span>
-                                    <label for="cb-{{ $b->id }}">{{ $overrideLabel ?: $b->label }}</label>
-                                </div>
+                                    <div class="finding-col-title" onclick="document.getElementById('cb-{{ $b->id }}').click()">
+                                        <span class="icon"><i class="{{ $effectiveIcon }}"></i></span>
+                                        <label for="cb-{{ $b->id }}"><strong>{{ $effectiveLabel }}</strong></label>
+                                    </div>
                                 <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
                             </div>
                             <div class="finding-details">
@@ -202,13 +224,18 @@
                                         @endif
                                         <textarea id="text-{{ $b->id }}" name="blocks[{{ $b->id }}][override_text]" rows="4" placeholder="La feltet være tomt for å bruke standardteksten...">{{ $overrideText }}</textarea>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
-                                        @if(!empty($b->tips))
-                                            <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ is_array($b->tips) ? implode(', ', $b->tips) : $b->tips }}</p>
-                                        @endif
-                                        <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
-                                    </div>
+                                        <div class="form-group">
+                                            <label for="tips-{{ $b->id }}">Overstyr Tips (kommaseparert)</label>
+                                            @php
+                                                $defaultTips = $templateBlock && $templateBlock->tips_override 
+                                                    ? (is_array($templateBlock->tips_override) ? implode(', ', $templateBlock->tips_override) : $templateBlock->tips_override)
+                                                    : (is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
+                                            @endphp
+                                            @if($defaultTips)
+                                                <p style="margin:0;font-size:0.9em;font-style:italic;color:#666;">Standard: {{ $defaultTips }}</p>
+                                            @endif
+                                            <input id="tips-{{ $b->id }}" name="blocks[{{ $b->id }}][override_tips]" value="{{ $overrideTips }}">
+                                        </div>
                                 </div>
                             </div>
                         </div>
