@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <input name="sections[{{ $s->id }}][title_override]" placeholder="Tittel-override" value="{{ old("sections.$s->id.title_override", $ts->title_override) }}">
                             <input type="number" min="0" name="sections[{{ $s->id }}][order_override]" placeholder="Order" value="{{ old("sections.$s->id.order_override", $ts->order_override ?? 0) }}">
                             <label style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+                                <input type="hidden" name="sections[{{ $s->id }}][show_title]" value="0">
                                 <input type="checkbox" name="sections[{{ $s->id }}][show_title]" value="1" {{ ($ts->show_title ?? true) ? 'checked' : '' }}>
                                 Vis tittel
                             </label>
@@ -206,31 +207,36 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 
-<div class="form-group">
-    <label>Synlighet i rapport</label>
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ ($tb->show_icon ?? true) ? 'checked' : '' }}>
-            Ikon
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ ($tb->show_label ?? true) ? 'checked' : '' }}>
-            Tittel
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ ($tb->show_text ?? true) ? 'checked' : '' }}>
-            Tekst
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ ($tb->show_tips ?? true) ? 'checked' : '' }}>
-            Tips
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ ($tb->show_severity ?? false) ? 'checked' : '' }}>
-            Severity
-        </label>
-    </div>
-</div>
+                <div class="form-group">
+                    <label>Synlighet i rapport</label>
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="hidden" name="blocks[{{ $b->id }}][show_icon]" value="0">
+                            <input type="checkbox" name="blocks[{{ $b->id }}][show_icon]" value="1" {{ ($tb->show_icon ?? true) ? 'checked' : '' }}>
+                            Ikon
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="hidden" name="blocks[{{ $b->id }}][show_label]" value="0">
+                            <input type="checkbox" name="blocks[{{ $b->id }}][show_label]" value="1" {{ ($tb->show_label ?? true) ? 'checked' : '' }}>
+                            Tittel
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="hidden" name="blocks[{{ $b->id }}][show_text]" value="0">
+                            <input type="checkbox" name="blocks[{{ $b->id }}][show_text]" value="1" {{ ($tb->show_text ?? true) ? 'checked' : '' }}>
+                            Tekst
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="hidden" name="blocks[{{ $b->id }}][show_tips]" value="0">
+                            <input type="checkbox" name="blocks[{{ $b->id }}][show_tips]" value="1" {{ ($tb->show_tips ?? true) ? 'checked' : '' }}>
+                            Tips
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="hidden" name="blocks[{{ $b->id }}][show_severity]" value="0">
+                            <input type="checkbox" name="blocks[{{ $b->id }}][show_severity]" value="1" {{ ($tb->show_severity ?? false) ? 'checked' : '' }}>
+                            Severity
+                        </label>
+                    </div>
+                </div>
                                             <div class="form-group">
                                                 <label>Tekst-override</label>
                                                 <textarea name="blocks[{{ $b->id }}][default_text_override]" rows="3" placeholder="Standard: {{ Str::limit($b->default_text, 80) }}">{{ old("blocks.$b->id.default_text_override", $tb->default_text_override) }}</textarea>

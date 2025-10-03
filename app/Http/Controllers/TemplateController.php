@@ -144,9 +144,9 @@ class TemplateController extends Controller
 
 
 
+
     public function saveStructure(Request $request, Template $template)
     {
-        // Valider input - inkluderer nå synlighetsfelter
         $request->validate([
             'template_name' => 'required|string|max:255',
             'template_description' => 'nullable|string',
@@ -166,7 +166,6 @@ class TemplateController extends Controller
             'blocks.*.tips_csv' => 'nullable|string',
             'blocks.*.order_override' => 'nullable|integer',
             'blocks.*.visible_by_default_override' => 'nullable|boolean',
-            // NYE SYNLIGHETSFELTER
             'blocks.*.show_icon' => 'nullable|boolean',
             'blocks.*.show_label' => 'nullable|boolean',
             'blocks.*.show_text' => 'nullable|boolean',
@@ -179,13 +178,11 @@ class TemplateController extends Controller
 
         DB::beginTransaction();
         try {
-            // Oppdater malens navn og beskrivelse
             $template->update([
                 'name' => $request->input('template_name'),
                 'description' => $request->input('template_description'),
             ]);
 
-            // Lagre SEKSJONER
             foreach ($sections as $sectionId => $data) {
                 TemplateSection::updateOrCreate(
                     [
@@ -201,9 +198,7 @@ class TemplateController extends Controller
                 );
             }
 
-            // Lagre BLOKKER
             foreach ($blocks as $blockId => $data) {
-                // Konverter tips fra CSV til array
                 $tipsArray = null;
                 if (!empty($data['tips_csv'])) {
                     $tipsArray = array_values(array_filter(
@@ -231,7 +226,6 @@ class TemplateController extends Controller
                         'tags_override' => null,
                         'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
                         'visible_by_default_override' => isset($data['visible_by_default_override']) && $data['visible_by_default_override'] == '1' ? true : null,
-                        // NYE SYNLIGHETSFELTER
                         'show_icon' => isset($data['show_icon']) && $data['show_icon'] == '1',
                         'show_label' => isset($data['show_label']) && $data['show_label'] == '1',
                         'show_text' => isset($data['show_text']) && $data['show_text'] == '1',
@@ -249,6 +243,8 @@ class TemplateController extends Controller
             return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
         }
     }
+
+
 
 
 }

@@ -24,7 +24,22 @@
     .icon-picker-preview { padding: 0.5rem; font-size: 1.2rem; min-width: 40px; text-align: center; }
     .icon-picker-placeholder { color: #888; font-size: 0.9rem; padding: 0.5rem; }
     .icon-picker-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; font-size: 0.9rem; display: none; align-items: center; justify-content: center; background-color: #e9ecef; border-radius: 50%; font-family: sans-serif; font-weight: bold; color: #888; cursor: pointer; z-index: 2; }
-    .icon-picker-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+    /* .icon-picker-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); } */
+    .icon-picker-modal {
+    display: none; /* Endres til 'flex' av JS */
+    position: fixed; /* Låser posisjonen til nettleservinduet */
+    z-index: 1050;   /* Sørger for at den ligger over alt annet */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Forhindrer scrolling av bakgrunnen */
+    background-color: rgba(0,0,0,0.5);
+    align-items: flex-start; /* Justerer vertikalt */
+    justify-content: center; /* Sentrerer horisontalt */
+    padding-top: 5%;
+}
+
     #iconGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(45px, 1fr)); gap: 8px; min-height: 100px; max-height: 50vh; overflow-y: auto; margin-top: 20px; }
     .icon-item { padding: 8px; text-align: center; font-size: 1.5rem; color: #333; cursor: pointer; border-radius: 4px; }
 
@@ -53,7 +68,7 @@
         align-items: center;
         justify-content: center;
     }
-    .modal-content { 
+    /* .modal-content { 
         background-color: #fefefe; 
         margin: auto;
         padding: 20px; 
@@ -64,7 +79,17 @@
         max-height: 80vh;
         display: flex;
         flex-direction: column;
-    }
+    } */
+
+    .modal-content {
+    background-color: #fefefe;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 800px;
+    border-radius: 8px;
+    position: relative; /* Nødvendig for at den skal vises korrekt */
+}
     .modal-header { 
         display: flex; 
         justify-content: space-between; 
@@ -199,22 +224,64 @@
                         $templateSection = isset($templateSections) ? $templateSections->get($sectionId) : null;
                         $showTitle = $projectSection?->show_title ?? $templateSection?->show_title ?? true;
                     @endphp
-                    <label style="display:flex;align-items:center;gap:4px;margin-left:1rem;font-size:0.85rem;font-weight:normal;">
-                        <input type="checkbox" name="sections[{{ $sectionId }}][show_title]" value="1" {{ $showTitle ? 'checked' : '' }}>
-                        Vis tittel
-                    </label>
+                        <label style="display:flex;align-items:center;gap:4px;margin-left:1rem;font-size:0.85rem;font-weight:normal;">
+                            <input type="hidden" name="sections[{{ $sectionId }}][show_title]" value="0">
+                            <input type="checkbox" name="sections[{{ $sectionId }}][show_title]" value="1" {{ $showTitle ? 'checked' : '' }}>
+                            Vis tittel
+                        </label>
                 </div>
                 <div class="section-blocks-wrapper">
                     @foreach($blocks as $b)
                         @if ($b instanceof \App\Models\ProjectCustomBlock)
                             @php
-                                // Generer unikt ID for custom blokk-elementer
-                                $uniqueId = 'cust'.$b->id;
-                                $customLabel = old("custom_blocks.{$b->id}.label", $b->label);
-                                $customIcon  = old("custom_blocks.{$b->id}.icon", $b->icon);
-                                $customText  = old("custom_blocks.{$b->id}.text", $b->text);
-                                $customTips  = old("custom_blocks.{$b->id}.tips", is_array($b->tips) ? implode(', ', $b->tips) : $b->tips);
-                                $customSeverity = old("custom_blocks.{$b->id}.severity", $b->severity ?: 'info');
+                                $projectBlock = $project->projectBlocks->firstWhere('block_id', $b->id);
+                                $templateBlock = isset($templateBlocks) ? $templateBlocks->get($b->id) : null;
+                                
+                                $checked = old("blocks.{$b->id}.selected", $projectBlock?->selected ?? $b->visible_by_default);
+                                
+                                $overrideLabel = old("blocks.{$b->id}.override_label", 
+                                    $projectBlock?->override_label ?? ($templateBlock?->label_override ?? ''));
+                                
+                                $overrideIcon = old("blocks.{$b->id}.override_icon", 
+                                    $projectBlock?->override_icon ?? ($templateBlock?->icon_override ?? ''));
+                                
+                                $overrideText = old("blocks.{$b->id}.override_text", 
+                                    $projectBlock?->override_text ?? ($templateBlock?->default_text_override ?? ''));
+                                
+                                $projectTips = is_array($projectBlock?->override_tips) 
+                                    ? implode(', ', $projectBlock->override_tips) 
+                                    : ($projectBlock?->override_tips ?? '');
+                                
+                                $templateTips = $templateBlock && is_array($templateBlock->tips_override) 
+                                    ? implode(', ', $templateBlock->tips_override) 
+                                    : ($templateBlock?->tips_override ?? '');
+                                
+                                $overrideTips = old("blocks.{$b->id}.override_tips", 
+                                    $projectTips ?: $templateTips);
+                                
+                                // NYTT - Synlighetsinnstillinger
+                                $showIcon = $projectBlock && $projectBlock->show_icon !== null 
+                                    ? (bool)$projectBlock->show_icon 
+                                    : ($templateBlock && $templateBlock->show_icon !== null ? (bool)$templateBlock->show_icon : true);
+                                
+                                $showLabel = $projectBlock && $projectBlock->show_label !== null 
+                                    ? (bool)$projectBlock->show_label 
+                                    : ($templateBlock && $templateBlock->show_label !== null ? (bool)$templateBlock->show_label : true);
+                                
+                                $showText = $projectBlock && $projectBlock->show_text !== null 
+                                    ? (bool)$projectBlock->show_text 
+                                    : ($templateBlock && $templateBlock->show_text !== null ? (bool)$templateBlock->show_text : true);
+                                
+                                $showTips = $projectBlock && $projectBlock->show_tips !== null 
+                                    ? (bool)$projectBlock->show_tips 
+                                    : ($templateBlock && $templateBlock->show_tips !== null ? (bool)$templateBlock->show_tips : true);
+                                
+                                $showSeverity = $projectBlock && $projectBlock->show_severity !== null 
+                                    ? (bool)$projectBlock->show_severity 
+                                    : ($templateBlock && $templateBlock->show_severity !== null ? (bool)$templateBlock->show_severity : false);
+                                
+                                $effectiveIcon = $overrideIcon ?: ($templateBlock?->icon_override ?? $b->icon);
+                                $effectiveLabel = $overrideLabel ?: ($templateBlock?->label_override ?? $b->label);
                             @endphp
                             <div class="finding-block custom-block">
                                 <div class="finding-block-main">
@@ -224,6 +291,9 @@
                                     </div>
                                     <div class="toggle-details-btn" role="button" title="Vis/skjul detaljer">+</div>
                                     <button type="button" class="remove-custom-btn" data-custom-id="{{ $b->id }}" title="Fjern blokk">×</button>
+
+
+                                    
                                 </div>
                                 <div class="finding-details">
                                     <div class="finding-details-content">
@@ -533,3 +603,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endsection
+

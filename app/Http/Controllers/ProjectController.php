@@ -123,188 +123,174 @@ class ProjectController extends Controller
 
 
 
-public function findings(Project $project)
-{
-    if (!$project->template_id) {
-        return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
-    }
-
-    $project->load('projectBlocks', 'customBlocks', 'projectSections');
-
-    $sections = Section::whereHas('templates', function ($query) use ($project) {
-            $query->where('template_id', $project->template_id);
-        })
-        ->orderBy('order')
-        ->with(['blocks' => function ($query) {
-            $query->orderBy('order');
-        }])
-        ->get();
-
-    [$templateSections, $templateBlocks] = $this->templateMaps($project);
-
-    $groupedBlocks = collect();
-    foreach ($sections as $section) {
-        $items = collect();
-
-        foreach ($section->blocks as $block) {
-            $items->push($block);
-
-            $customsAfter = $project->customBlocks
-                ->where('after_block_id', $block->id)
-                ->sortBy('order');
-            foreach ($customsAfter as $custom) {
-                $items->push($custom);
-            }
+    public function findings(Project $project)
+    {
+        if (!$project->template_id) {
+            return back()->withErrors(['msg' => 'Prosjektet har ingen mal tilknyttet og kan ikke vise blokker.']);
         }
 
-        $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
-        $groupedBlocks->put($sectionTitle, $items);
+        $project->load('projectBlocks', 'customBlocks', 'projectSections');
+
+        $sections = Section::whereHas('templates', function ($query) use ($project) {
+                $query->where('template_id', $project->template_id);
+            })
+            ->orderBy('order')
+            ->with(['blocks' => function ($query) {
+                $query->orderBy('order');
+            }])
+            ->get();
+
+        [$templateSections, $templateBlocks] = $this->templateMaps($project);
+
+        $groupedBlocks = collect();
+        foreach ($sections as $section) {
+            $items = collect();
+
+            foreach ($section->blocks as $block) {
+                $items->push($block);
+
+                $customsAfter = $project->customBlocks
+                    ->where('after_block_id', $block->id)
+                    ->sortBy('order');
+                foreach ($customsAfter as $custom) {
+                    $items->push($custom);
+                }
+            }
+
+            $sectionTitle = optional($templateSections->get($section->id))->title_override ?: $section->label;
+            $groupedBlocks->put($sectionTitle, $items);
+        }
+
+        $projectSections = $project->projectSections->keyBy('section_id');
+
+        return view('projects.findings', [
+            'project'          => $project,
+            'groupedBlocks'    => $groupedBlocks,
+            'templateBlocks'   => $templateBlocks,
+            'templateSections' => $templateSections,
+            'projectSections'  => $projectSections,
+            'sections'         => $sections, // Legg til dette
+        ]);
     }
 
-    $projectSections = $project->projectSections->keyBy('section_id');
+    public function saveFindings(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'blocks.*.selected'       => 'nullable|boolean',
+            'blocks.*.override_label' => 'nullable|string|max:255',
+            'blocks.*.override_icon'  => 'nullable|string|max:100',
+            'blocks.*.override_text'  => 'nullable|string',
+            'blocks.*.override_tips'  => 'nullable|string',
+            'blocks.*.show_icon'      => 'nullable',
+            'blocks.*.show_label'     => 'nullable',
+            'blocks.*.show_text'      => 'nullable',
+            'blocks.*.show_tips'      => 'nullable',
+            'blocks.*.show_severity'  => 'nullable',
+            
+            'custom_blocks.*.label'           => 'nullable|string|max:255',
+            'custom_blocks.*.icon'            => 'nullable|string|max:100',
+            'custom_blocks.*.text'            => 'nullable|string',
+            'custom_blocks.*.tips'            => 'nullable|string',
+            'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
+            'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
+            
+            'sections.*.show_title'   => 'nullable',
+        ]);
 
-    return view('projects.findings', [
-        'project'          => $project,
-        'groupedBlocks'    => $groupedBlocks,
-        'templateBlocks'   => $templateBlocks,
-        'templateSections' => $templateSections,
-        'projectSections'  => $projectSections,
-        'sections'         => $sections, // Legg til dette
-    ]);
-}
-
-        // in app/Http/Controllers/ProjectController.php
-
-
-// app/Http/Controllers/ProjectController.php
-
-
-public function saveFindings(Request $request, Project $project)
-
-{
-    $validated = $request->validate([
-        'blocks.*.selected'       => 'boolean',
-        'blocks.*.override_label' => 'nullable|string|max:255',
-        'blocks.*.override_icon'  => 'nullable|string|max:100',
-        'blocks.*.override_text'  => 'nullable|string',
-        'blocks.*.override_tips'  => 'nullable|string',
-        // NYE SYNLIGHETSFELTER
-        'blocks.*.show_icon'      => 'nullable|boolean',
-        'blocks.*.show_label'     => 'nullable|boolean',
-        'blocks.*.show_text'      => 'nullable|boolean',
-        'blocks.*.show_tips'      => 'nullable|boolean',
-        'blocks.*.show_severity'  => 'nullable|boolean',
-        
-        'custom_blocks.*.label'           => 'nullable|string|max:255',
-        'custom_blocks.*.icon'            => 'nullable|string|max:100',
-        'custom_blocks.*.text'            => 'nullable|string',
-        'custom_blocks.*.tips'            => 'nullable|string',
-        'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
-        'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
-        
-        // SEKSJONER
-        'sections.*.show_title'   => 'nullable|boolean',
-    ]);
-
-    DB::beginTransaction();
-    try {
-        // Lagre standard blokker
-        foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
-            $project->projectBlocks()->updateOrCreate(
-                ['block_id' => $blockId],
-                [
-                    'selected'       => $blockData['selected'] ?? false,
-                    'override_label' => $blockData['override_label'],
-                    'override_icon'  => $blockData['override_icon'],
-                    'override_text'  => $blockData['override_text'],
-                    'override_tips'  => $blockData['override_tips']
+        \DB::beginTransaction();
+        try {
+            foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
+                $updateData = [
+                    'selected'       => isset($blockData['selected']) && $blockData['selected'] == '1',
+                    'override_label' => $blockData['override_label'] ?? null,
+                    'override_icon'  => $blockData['override_icon'] ?? null,
+                    'override_text'  => $blockData['override_text'] ?? null,
+                    'override_tips'  => isset($blockData['override_tips']) && $blockData['override_tips']
                         ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
                         : null,
-                    // NYE SYNLIGHETSFELTER
-                    'show_icon'      => isset($blockData['show_icon']) ? (bool)$blockData['show_icon'] : null,
-                    'show_label'     => isset($blockData['show_label']) ? (bool)$blockData['show_label'] : null,
-                    'show_text'      => isset($blockData['show_text']) ? (bool)$blockData['show_text'] : null,
-                    'show_tips'      => isset($blockData['show_tips']) ? (bool)$blockData['show_tips'] : null,
-                    'show_severity'  => isset($blockData['show_severity']) ? (bool)$blockData['show_severity'] : null,
-                ]
-            );
-        }
+                ];
 
-        // Lagre custom blokker (samme som før)
-        $keepCustomIds = [];
-        foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
-            $tipsArr = null;
-            if (!empty($customData['tips'])) {
-                $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
-            }
-            
-            $attrs = [
-                'label'          => $customData['label'] ?? null,
-                'icon'           => $customData['icon'] ?? null,
-                'text'           => $customData['text'] ?? null,
-                'tips'           => $tipsArr,
-                'severity'       => $customData['severity'] ?? 'info',
-                'after_block_id' => $customData['after_block_id'] ?? null,
-            ];
-
-            if (str_starts_with((string)$customKey, 'new_')) {
-                $attrs['project_id'] = $project->id;
-                if (!empty($customData['after_block_id'])) {
-                    $blockObj = \App\Models\Block::find($customData['after_block_id']);
-                    if ($blockObj) {
-                        $attrs['section_id'] = $blockObj->section_id;
+                foreach (['show_icon', 'show_label', 'show_text', 'show_tips', 'show_severity'] as $field) {
+                    if (isset($blockData[$field])) {
+                        $updateData[$field] = $blockData[$field] === '1' || $blockData[$field] === 1 || $blockData[$field] === true;
+                    } else {
+                        $updateData[$field] = null;
                     }
                 }
-                $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
-                $keepCustomIds[] = $newBlock->id;
-            } else {
-                $cb = \App\Models\ProjectCustomBlock::find($customKey);
-                if ($cb && $cb->project_id == $project->id) {
-                    $cb->update($attrs);
-                    $keepCustomIds[] = $cb->id;
+
+                $project->projectBlocks()->updateOrCreate(
+                    ['block_id' => $blockId],
+                    $updateData
+                );
+            }
+
+            $keepCustomIds = [];
+            foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
+                $tipsArr = null;
+                if (!empty($customData['tips'])) {
+                    $tipsArr = array_values(array_filter(array_map('trim', explode(',', $customData['tips']))));
+                }
+                
+                $attrs = [
+                    'label'          => $customData['label'] ?? null,
+                    'icon'           => $customData['icon'] ?? null,
+                    'text'           => $customData['text'] ?? null,
+                    'tips'           => $tipsArr,
+                    'severity'       => $customData['severity'] ?? 'info',
+                    'after_block_id' => $customData['after_block_id'] ?? null,
+                ];
+
+                if (str_starts_with((string)$customKey, 'new_')) {
+                    $attrs['project_id'] = $project->id;
+                    if (!empty($customData['after_block_id'])) {
+                        $blockObj = \App\Models\Block::find($customData['after_block_id']);
+                        if ($blockObj) {
+                            $attrs['section_id'] = $blockObj->section_id;
+                        }
+                    }
+                    $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
+                    $keepCustomIds[] = $newBlock->id;
+                } else {
+                    $cb = \App\Models\ProjectCustomBlock::find($customKey);
+                    if ($cb && $cb->project_id == $project->id) {
+                        $cb->update($attrs);
+                        $keepCustomIds[] = $cb->id;
+                    }
                 }
             }
+
+            \App\Models\ProjectCustomBlock::where('project_id', $project->id)
+                ->whereNotIn('id', $keepCustomIds)
+                ->delete();
+
+            foreach ($validated['sections'] ?? [] as $sectionId => $sectionData) {
+                \App\Models\ProjectSection::updateOrCreate(
+                    [
+                        'project_id' => $project->id,
+                        'section_id' => $sectionId,
+                    ],
+                    [
+                        'show_title' => isset($sectionData['show_title']) && ($sectionData['show_title'] === '1' || $sectionData['show_title'] === 1 || $sectionData['show_title'] === true),
+                    ]
+                );
+            }
+
+            \DB::commit();
+            return back()->with('ok', 'Endringer er lagret');
+            
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::error('saveFindings failed: ' . $e->getMessage());
+            return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
         }
-
-        \App\Models\ProjectCustomBlock::where('project_id', $project->id)
-            ->whereNotIn('id', $keepCustomIds)
-            ->delete();
-
-        // LAGRE SEKSJONS-SYNLIGHET
-        foreach ($validated['sections'] ?? [] as $sectionId => $sectionData) {
-            \App\Models\ProjectSection::updateOrCreate(
-                [
-                    'project_id' => $project->id,
-                    'section_id' => $sectionId,
-                ],
-                [
-                    'show_title' => isset($sectionData['show_title']) ? (bool)$sectionData['show_title'] : null,
-                ]
-            );
-        }
-
-        DB::commit();
-        return back()->with('ok', 'Endringer er lagret');
-        
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        \Log::error('saveFindings failed: ' . $e->getMessage());
-        return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
     }
-}
-
-
-
-
-
     private function buildReportSections(): array
     {
         $sections = \App\Models\Section::with('blocks')->orderBy('order')->get();
         return [$sections];
     }
-
-
-    public function reportPreview(Project $project){
+    public function reportPreview(Project $project)
+    {
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
@@ -333,23 +319,27 @@ public function saveFindings(Request $request, Project $project)
 
                 $tb = $templateBlocks->get($b->id);
 
-                // SYNLIGHETSLOGIKK: project → template → default
-                $showIcon     = $row->show_icon     ?? $tb?->show_icon     ?? true;
-                $showLabel    = $row->show_label    ?? $tb?->show_label    ?? true;
-                $showText     = $row->show_text     ?? $tb?->show_text     ?? true;
-                $showTips     = $row->show_tips     ?? $tb?->show_tips     ?? true;
-                $showSeverity = $row->show_severity ?? $tb?->show_severity ?? false;
+                $showIcon     = ($row->show_icon !== null)     ? (bool)$row->show_icon     : (($tb?->show_icon !== null)     ? (bool)$tb->show_icon     : true);
+                $showLabel    = ($row->show_label !== null)    ? (bool)$row->show_label    : (($tb?->show_label !== null)    ? (bool)$tb->show_label    : true);
+                $showText     = ($row->show_text !== null)     ? (bool)$row->show_text     : (($tb?->show_text !== null)     ? (bool)$tb->show_text     : true);
+                $showTips     = ($row->show_tips !== null)     ? (bool)$row->show_tips     : (($tb?->show_tips !== null)     ? (bool)$tb->show_tips     : true);
+                $showSeverity = ($row->show_severity !== null) ? (bool)$row->show_severity : (($tb?->show_severity !== null) ? (bool)$tb->show_severity : false);
+
+                $tips = $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips);
+                if (is_string($tips)) {
+                    $tips = array_filter(array_map('trim', explode(',', $tips)));
+                }
+                $tips = $tips ?: [];
 
                 $chosen[] = [
-                    'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
-                    'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
-                    'severity' => $b->severity,
-                    'text'     => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
-                    'tips'     => $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips),
-                    'refs'     => $b->references ?? null,
-                    'tags'     => $b->tags ?? null,
-                    '_order'   => (int)($b->order ?? 0),
-                    // SYNLIGHETSDATA
+                    'icon'          => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
+                    'label'         => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
+                    'severity'      => $b->severity,
+                    'text'          => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
+                    'tips'          => $tips,
+                    'refs'          => $b->references ?? null,
+                    'tags'          => $b->tags ?? null,
+                    '_order'        => (int)($b->order ?? 0),
                     'show_icon'     => $showIcon,
                     'show_label'    => $showLabel,
                     'show_text'     => $showText,
@@ -357,19 +347,23 @@ public function saveFindings(Request $request, Project $project)
                     'show_severity' => $showSeverity,
                 ];
 
-                // Custom blocks etter denne blokken
                 $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
                 foreach ($customsAfter as $custom) {
+                    $customTips = $custom->tips;
+                    if (is_string($customTips)) {
+                        $customTips = array_filter(array_map('trim', explode(',', $customTips)));
+                    }
+                    $customTips = $customTips ?: [];
+
                     $chosen[] = [
-                        'icon'     => $custom->icon,
-                        'label'    => $custom->label,
-                        'severity' => $custom->severity ?? 'info',
-                        'text'     => $custom->text,
-                        'tips'     => $custom->tips,
-                        'refs'     => null,
-                        'tags'     => null,
-                        '_order'   => (int)($b->order ?? 0) + 0.5,
-                        // Custom blocks viser alltid alt
+                        'icon'          => $custom->icon,
+                        'label'         => $custom->label,
+                        'severity'      => $custom->severity ?? 'info',
+                        'text'          => $custom->text,
+                        'tips'          => $customTips,
+                        'refs'          => null,
+                        'tags'          => null,
+                        '_order'        => (int)($b->order ?? 0) + 0.5,
                         'show_icon'     => true,
                         'show_label'    => true,
                         'show_text'     => true,
@@ -386,9 +380,7 @@ public function saveFindings(Request $request, Project $project)
                 $ps = $projectSections->get($s->id);
                 
                 $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
-                
-                // Seksjon-synlighet: project → template → default
-                $showSectionTitle = $ps?->show_title ?? $ts?->show_title ?? true;
+                $showSectionTitle = ($ps && $ps->show_title !== null) ? (bool)$ps->show_title : (($ts && $ts->show_title !== null) ? (bool)$ts->show_title : true);
                 
                 $reportSections[] = [
                     'title'      => $sectionTitle,
@@ -407,11 +399,8 @@ public function saveFindings(Request $request, Project $project)
             'company'        => $company,
         ]);
     }
-
-
-
-
-    public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf){
+    public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf)
+    {
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
@@ -440,23 +429,27 @@ public function saveFindings(Request $request, Project $project)
 
                 $tb = $templateBlocks->get($b->id);
 
-                // SYNLIGHETSLOGIKK: project → template → default
-                $showIcon     = $row->show_icon     ?? $tb?->show_icon     ?? true;
-                $showLabel    = $row->show_label    ?? $tb?->show_label    ?? true;
-                $showText     = $row->show_text     ?? $tb?->show_text     ?? true;
-                $showTips     = $row->show_tips     ?? $tb?->show_tips     ?? true;
-                $showSeverity = $row->show_severity ?? $tb?->show_severity ?? false;
+                $showIcon     = ($row->show_icon !== null)     ? (bool)$row->show_icon     : (($tb?->show_icon !== null)     ? (bool)$tb->show_icon     : true);
+                $showLabel    = ($row->show_label !== null)    ? (bool)$row->show_label    : (($tb?->show_label !== null)    ? (bool)$tb->show_label    : true);
+                $showText     = ($row->show_text !== null)     ? (bool)$row->show_text     : (($tb?->show_text !== null)     ? (bool)$tb->show_text     : true);
+                $showTips     = ($row->show_tips !== null)     ? (bool)$row->show_tips     : (($tb?->show_tips !== null)     ? (bool)$tb->show_tips     : true);
+                $showSeverity = ($row->show_severity !== null) ? (bool)$row->show_severity : (($tb?->show_severity !== null) ? (bool)$tb->show_severity : false);
+
+                $tips = $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips);
+                if (is_string($tips)) {
+                    $tips = array_filter(array_map('trim', explode(',', $tips)));
+                }
+                $tips = $tips ?: [];
 
                 $chosen[] = [
-                    'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
-                    'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
-                    'severity' => $b->severity,
-                    'text'     => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
-                    'tips'     => $row->override_tips ?? ($tb && $tb->tips_override ? $tb->tips_override : $b->tips),
-                    'refs'     => $b->references ?? null,
-                    'tags'     => $b->tags ?? null,
-                    '_order'   => (int)($b->order ?? 0),
-                    // SYNLIGHETSDATA
+                    'icon'          => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
+                    'label'         => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
+                    'severity'      => $b->severity,
+                    'text'          => $row->override_text ?: ($tb && $tb->default_text_override ? $tb->default_text_override : $b->default_text),
+                    'tips'          => $tips,
+                    'refs'          => $b->references ?? null,
+                    'tags'          => $b->tags ?? null,
+                    '_order'        => (int)($b->order ?? 0),
                     'show_icon'     => $showIcon,
                     'show_label'    => $showLabel,
                     'show_text'     => $showText,
@@ -464,18 +457,23 @@ public function saveFindings(Request $request, Project $project)
                     'show_severity' => $showSeverity,
                 ];
 
-                // Custom blocks
                 $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
                 foreach ($customsAfter as $custom) {
+                    $customTips = $custom->tips;
+                    if (is_string($customTips)) {
+                        $customTips = array_filter(array_map('trim', explode(',', $customTips)));
+                    }
+                    $customTips = $customTips ?: [];
+
                     $chosen[] = [
-                        'icon'     => $custom->icon,
-                        'label'    => $custom->label,
-                        'severity' => $custom->severity ?? 'info',
-                        'text'     => $custom->text,
-                        'tips'     => $custom->tips,
-                        'refs'     => null,
-                        'tags'     => null,
-                        '_order'   => (int)($b->order ?? 0) + 0.5,
+                        'icon'          => $custom->icon,
+                        'label'         => $custom->label,
+                        'severity'      => $custom->severity ?? 'info',
+                        'text'          => $custom->text,
+                        'tips'          => $customTips,
+                        'refs'          => null,
+                        'tags'          => null,
+                        '_order'        => (int)($b->order ?? 0) + 0.5,
                         'show_icon'     => true,
                         'show_label'    => true,
                         'show_text'     => true,
@@ -492,7 +490,7 @@ public function saveFindings(Request $request, Project $project)
                 $ps = $projectSections->get($s->id);
                 
                 $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
-                $showSectionTitle = $ps?->show_title ?? $ts?->show_title ?? true;
+                $showSectionTitle = ($ps && $ps->show_title !== null) ? (bool)$ps->show_title : (($ts && $ts->show_title !== null) ? (bool)$ts->show_title : true);
                 
                 $reportSections[] = [
                     'title'      => $sectionTitle,

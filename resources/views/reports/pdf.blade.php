@@ -1,3 +1,7 @@
+<!-- ============================================ -->
+<!-- resources/views/reports/pdf.blade.php -->
+<!-- INSTRUKSJON: ERSTATT HELE FILEN med denne koden -->
+<!-- ============================================ -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -12,7 +16,6 @@
                 {{ $pdfStyles['margin_left'] ?? 18 }}mm;
     }
 
-    /* Bruker de nye, dynamiske verdiene med standardverdier som fallback */
     body { 
         font-family: {{ $pdfStyles['font_family'] ?? 'DejaVu Sans, Arial, sans-serif' }}; 
         font-size: {{ $pdfStyles['font_size'] ?? 11 }}pt; 
@@ -24,7 +27,6 @@
     h2 { font-size: 14pt; margin: 10mm 0 3mm; border-bottom: 1px solid #ddd; padding-bottom: 2mm; }
     .block { 
         margin: 4mm 0;
-        /* Legger til linje dynamisk basert på innstillinger */
         @if(($pdfStyles['separator_style'] ?? 'none') !== 'none')
             border-bottom: {{ $pdfStyles['separator_thickness'] ?? 1 }}px {{ $pdfStyles['separator_style'] ?? 'solid' }} {{ $pdfStyles['separator_color'] ?? '#dddddd' }};
             padding-bottom: 4mm;
@@ -39,6 +41,8 @@
     .customer-info { margin-bottom: 12mm; border: 1px solid #eee; padding: 4mm; border-radius: 4px; background: #fdfdfd; }
     .customer-info h3 { font-size: 12pt; margin: 0 0 3mm; color: #333; }
     .customer-info p { margin: 1mm 0; }
+    .tips { margin-top: 2mm; padding-left: 5mm; }
+    .tips li { margin: 1mm 0; }
   </style>
   <link href="{{ asset('css/all.min.css') }}" rel="stylesheet">
 </head>
@@ -67,15 +71,40 @@
     @endif
 
     @foreach($reportSections as $s)
-        <h2>{{ $s['title'] }}</h2>
+        @if($s['show_title'])
+            <h2>{{ $s['title'] }}</h2>
+        @endif
+        
         @foreach($s['blocks'] as $b)
           <div class="block">
             <strong>
-              <span class="icon"><i class="{{ $b['icon'] }}"></i></span>
-              {{ $b['label'] }}
-              <span class="meta {{ 'sev-'.$b['severity'] }}"> ({{ $b['severity'] }})</span>
+              @if($b['show_icon'])
+                <span class="icon"><i class="{{ $b['icon'] }}"></i></span>
+              @endif
+              
+              @if($b['show_label'])
+                {{ $b['label'] }}
+              @endif
+              
+              @if($b['show_severity'])
+                <span class="meta {{ 'sev-'.$b['severity'] }}"> ({{ $b['severity'] }})</span>
+              @endif
             </strong>
-            <div>{!! nl2br(e($b['text'])) !!}</div>
+            
+            @if($b['show_text'] && $b['text'])
+              <div>{!! nl2br(e($b['text'])) !!}</div>
+            @endif
+            
+            @if($b['show_tips'] && !empty($b['tips']))
+              <div class="tips">
+                <strong>Tips:</strong>
+                <ul>
+                  @foreach($b['tips'] as $tip)
+                    <li>{{ $tip }}</li>
+                  @endforeach
+                </ul>
+              </div>
+            @endif
           </div>
         @endforeach
     @endforeach
