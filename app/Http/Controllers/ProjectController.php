@@ -175,22 +175,39 @@ public function findings(Project $project)
 
         // in app/Http/Controllers/ProjectController.php
 
-    public function saveFindings(Request $request, Project $project)
-    {
-        $validated = $request->validate([
-            'blocks.*.selected'       => 'boolean',
-            'blocks.*.override_label' => 'nullable|string|max:255',
-            'blocks.*.override_icon'  => 'nullable|string|max:100',
-            'blocks.*.override_text'  => 'nullable|string',
-            'blocks.*.override_tips'  => 'nullable|string',
-            'custom_blocks.*.label'           => 'nullable|string|max:255',
-            'custom_blocks.*.icon'            => 'nullable|string|max:100',
-            'custom_blocks.*.text'            => 'nullable|string',
-            'custom_blocks.*.tips'            => 'nullable|string',
-            'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
-            'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
-        ]);
 
+// app/Http/Controllers/ProjectController.php
+
+
+public function saveFindings(Request $request, Project $project)
+
+{
+    $validated = $request->validate([
+        'blocks.*.selected'       => 'boolean',
+        'blocks.*.override_label' => 'nullable|string|max:255',
+        'blocks.*.override_icon'  => 'nullable|string|max:100',
+        'blocks.*.override_text'  => 'nullable|string',
+        'blocks.*.override_tips'  => 'nullable|string',
+        // NYE SYNLIGHETSFELTER
+        'blocks.*.show_icon'      => 'nullable|boolean',
+        'blocks.*.show_label'     => 'nullable|boolean',
+        'blocks.*.show_text'      => 'nullable|boolean',
+        'blocks.*.show_tips'      => 'nullable|boolean',
+        'blocks.*.show_severity'  => 'nullable|boolean',
+        
+        'custom_blocks.*.label'           => 'nullable|string|max:255',
+        'custom_blocks.*.icon'            => 'nullable|string|max:100',
+        'custom_blocks.*.text'            => 'nullable|string',
+        'custom_blocks.*.tips'            => 'nullable|string',
+        'custom_blocks.*.severity'        => 'nullable|in:info,warn,crit',
+        'custom_blocks.*.after_block_id'  => 'nullable|exists:blocks,id',
+        
+        // SEKSJONER
+        'sections.*.show_title'   => 'nullable|boolean',
+    ]);
+
+    DB::beginTransaction();
+    try {
         // Lagre standard blokker
         foreach ($validated['blocks'] ?? [] as $blockId => $blockData) {
             $project->projectBlocks()->updateOrCreate(
@@ -203,13 +220,18 @@ public function findings(Project $project)
                     'override_tips'  => $blockData['override_tips']
                         ? array_values(array_filter(array_map('trim', explode(',', $blockData['override_tips']))))
                         : null,
+                    // NYE SYNLIGHETSFELTER
+                    'show_icon'      => isset($blockData['show_icon']) ? (bool)$blockData['show_icon'] : null,
+                    'show_label'     => isset($blockData['show_label']) ? (bool)$blockData['show_label'] : null,
+                    'show_text'      => isset($blockData['show_text']) ? (bool)$blockData['show_text'] : null,
+                    'show_tips'      => isset($blockData['show_tips']) ? (bool)$blockData['show_tips'] : null,
+                    'show_severity'  => isset($blockData['show_severity']) ? (bool)$blockData['show_severity'] : null,
                 ]
             );
         }
 
-        // Samle alle custom block IDs som skal beholdes
+        // Lagre custom blokker (samme som før)
         $keepCustomIds = [];
-        
         foreach ($validated['custom_blocks'] ?? [] as $customKey => $customData) {
             $tipsArr = null;
             if (!empty($customData['tips'])) {
@@ -226,7 +248,6 @@ public function findings(Project $project)
             ];
 
             if (str_starts_with((string)$customKey, 'new_')) {
-                // Ny custom block
                 $attrs['project_id'] = $project->id;
                 if (!empty($customData['after_block_id'])) {
                     $blockObj = \App\Models\Block::find($customData['after_block_id']);
@@ -237,7 +258,6 @@ public function findings(Project $project)
                 $newBlock = \App\Models\ProjectCustomBlock::create($attrs);
                 $keepCustomIds[] = $newBlock->id;
             } else {
-                // Eksisterende custom block
                 $cb = \App\Models\ProjectCustomBlock::find($customKey);
                 if ($cb && $cb->project_id == $project->id) {
                     $cb->update($attrs);
@@ -246,13 +266,32 @@ public function findings(Project $project)
             }
         }
 
-        // Slett custom blocks som ikke lenger er i skjemaet
         \App\Models\ProjectCustomBlock::where('project_id', $project->id)
             ->whereNotIn('id', $keepCustomIds)
             ->delete();
 
+        // LAGRE SEKSJONS-SYNLIGHET
+        foreach ($validated['sections'] ?? [] as $sectionId => $sectionData) {
+            \App\Models\ProjectSection::updateOrCreate(
+                [
+                    'project_id' => $project->id,
+                    'section_id' => $sectionId,
+                ],
+                [
+                    'show_title' => isset($sectionData['show_title']) ? (bool)$sectionData['show_title'] : null,
+                ]
+            );
+        }
+
+        DB::commit();
         return back()->with('ok', 'Endringer er lagret');
+        
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        \Log::error('saveFindings failed: ' . $e->getMessage());
+        return back()->with('error', 'Kunne ikke lagre: ' . $e->getMessage());
     }
+}
 
 
 
@@ -264,15 +303,16 @@ public function findings(Project $project)
         return [$sections];
     }
 
-    public function reportPreview(Project $project)
-    {
+
+    public function reportPreview(Project $project){
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
 
         $company = $this->companyInfo();
-        $project->load('projectBlocks', 'customBlocks'); // LEGG TIL customBlocks
+        $project->load('projectBlocks', 'customBlocks', 'projectSections');
         $pb = $project->projectBlocks->keyBy('block_id');
+        $projectSections = $project->projectSections->keyBy('section_id');
 
         $templateSections = collect();
         $templateBlocks = collect();
@@ -293,6 +333,13 @@ public function findings(Project $project)
 
                 $tb = $templateBlocks->get($b->id);
 
+                // SYNLIGHETSLOGIKK: project → template → default
+                $showIcon     = $row->show_icon     ?? $tb?->show_icon     ?? true;
+                $showLabel    = $row->show_label    ?? $tb?->show_label    ?? true;
+                $showText     = $row->show_text     ?? $tb?->show_text     ?? true;
+                $showTips     = $row->show_tips     ?? $tb?->show_tips     ?? true;
+                $showSeverity = $row->show_severity ?? $tb?->show_severity ?? false;
+
                 $chosen[] = [
                     'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
                     'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
@@ -302,9 +349,15 @@ public function findings(Project $project)
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
+                    // SYNLIGHETSDATA
+                    'show_icon'     => $showIcon,
+                    'show_label'    => $showLabel,
+                    'show_text'     => $showText,
+                    'show_tips'     => $showTips,
+                    'show_severity' => $showSeverity,
                 ];
 
-                // LEGG TIL custom blocks etter denne blokken
+                // Custom blocks etter denne blokken
                 $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
                 foreach ($customsAfter as $custom) {
                     $chosen[] = [
@@ -315,7 +368,13 @@ public function findings(Project $project)
                         'tips'     => $custom->tips,
                         'refs'     => null,
                         'tags'     => null,
-                        '_order'   => (int)($b->order ?? 0) + 0.5, // Mellom hovedblokk og neste
+                        '_order'   => (int)($b->order ?? 0) + 0.5,
+                        // Custom blocks viser alltid alt
+                        'show_icon'     => true,
+                        'show_label'    => true,
+                        'show_text'     => true,
+                        'show_tips'     => true,
+                        'show_severity' => true,
                     ];
                 }
             }
@@ -324,12 +383,18 @@ public function findings(Project $project)
                 usort($chosen, fn($a,$b) => $a['_order'] <=> $b['_order'] ?: strcmp($a['label'],$b['label']));
                 
                 $ts = $templateSections->get($s->id);
+                $ps = $projectSections->get($s->id);
+                
                 $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
                 
+                // Seksjon-synlighet: project → template → default
+                $showSectionTitle = $ps?->show_title ?? $ts?->show_title ?? true;
+                
                 $reportSections[] = [
-                    'title'  => $sectionTitle,
-                    'blocks' => $chosen,
-                    '_order' => (int)($s->order ?? 0),
+                    'title'      => $sectionTitle,
+                    'show_title' => $showSectionTitle,
+                    'blocks'     => $chosen,
+                    '_order'     => (int)($s->order ?? 0),
                 ];
             }
         }
@@ -343,15 +408,18 @@ public function findings(Project $project)
         ]);
     }
 
-    public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf)
-    {
+
+
+
+    public function reportPdf(Project $project, \App\Services\PdfRenderer $pdf){
         $sections = Section::with(['blocks' => function ($q) {
             $q->orderBy('order')->orderBy('id');
         }])->orderBy('order')->get();
 
         $company = $this->companyInfo();
-        $project->load('projectBlocks', 'customBlocks');
+        $project->load('projectBlocks', 'customBlocks', 'projectSections');
         $pb = $project->projectBlocks->keyBy('block_id');
+        $projectSections = $project->projectSections->keyBy('section_id');
 
         $templateSections = collect();
         $templateBlocks = collect();
@@ -372,6 +440,13 @@ public function findings(Project $project)
 
                 $tb = $templateBlocks->get($b->id);
 
+                // SYNLIGHETSLOGIKK: project → template → default
+                $showIcon     = $row->show_icon     ?? $tb?->show_icon     ?? true;
+                $showLabel    = $row->show_label    ?? $tb?->show_label    ?? true;
+                $showText     = $row->show_text     ?? $tb?->show_text     ?? true;
+                $showTips     = $row->show_tips     ?? $tb?->show_tips     ?? true;
+                $showSeverity = $row->show_severity ?? $tb?->show_severity ?? false;
+
                 $chosen[] = [
                     'icon'     => $row->override_icon ?: ($tb && $tb->icon_override ? $tb->icon_override : $b->icon),
                     'label'    => $row->override_label ?: ($tb && $tb->label_override ? $tb->label_override : $b->label),
@@ -381,9 +456,15 @@ public function findings(Project $project)
                     'refs'     => $b->references ?? null,
                     'tags'     => $b->tags ?? null,
                     '_order'   => (int)($b->order ?? 0),
+                    // SYNLIGHETSDATA
+                    'show_icon'     => $showIcon,
+                    'show_label'    => $showLabel,
+                    'show_text'     => $showText,
+                    'show_tips'     => $showTips,
+                    'show_severity' => $showSeverity,
                 ];
 
-                // Legg til custom blocks etter denne blokken
+                // Custom blocks
                 $customsAfter = $project->customBlocks->where('after_block_id', $b->id)->sortBy('order');
                 foreach ($customsAfter as $custom) {
                     $chosen[] = [
@@ -395,6 +476,11 @@ public function findings(Project $project)
                         'refs'     => null,
                         'tags'     => null,
                         '_order'   => (int)($b->order ?? 0) + 0.5,
+                        'show_icon'     => true,
+                        'show_label'    => true,
+                        'show_text'     => true,
+                        'show_tips'     => true,
+                        'show_severity' => true,
                     ];
                 }
             }
@@ -403,12 +489,16 @@ public function findings(Project $project)
                 usort($chosen, fn($a,$b) => $a['_order'] <=> $b['_order'] ?: strcmp($a['label'],$b['label']));
                 
                 $ts = $templateSections->get($s->id);
+                $ps = $projectSections->get($s->id);
+                
                 $sectionTitle = $ts && $ts->title_override ? $ts->title_override : $s->label;
+                $showSectionTitle = $ps?->show_title ?? $ts?->show_title ?? true;
                 
                 $reportSections[] = [
-                    'title'  => $sectionTitle,
-                    'blocks' => $chosen,
-                    '_order' => (int)($s->order ?? 0),
+                    'title'      => $sectionTitle,
+                    'show_title' => $showSectionTitle,
+                    'blocks'     => $chosen,
+                    '_order'     => (int)($s->order ?? 0),
                 ];
             }
         }

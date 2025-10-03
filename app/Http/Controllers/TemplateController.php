@@ -141,9 +141,12 @@ class TemplateController extends Controller
         $template->delete();
         return redirect()->route('templates.index')->with('ok','Mal slettet.');
     }
+
+
+
     public function saveStructure(Request $request, Template $template)
     {
-        // Valider input - inkluderer nå navn og beskrivelse
+        // Valider input - inkluderer nå synlighetsfelter
         $request->validate([
             'template_name' => 'required|string|max:255',
             'template_description' => 'nullable|string',
@@ -152,6 +155,7 @@ class TemplateController extends Controller
             'sections.*.included' => 'nullable|boolean',
             'sections.*.title_override' => 'nullable|string|max:255',
             'sections.*.order_override' => 'nullable|integer',
+            'sections.*.show_title' => 'nullable|boolean',
             
             'blocks' => 'nullable|array',
             'blocks.*.included' => 'nullable|boolean',
@@ -162,6 +166,12 @@ class TemplateController extends Controller
             'blocks.*.tips_csv' => 'nullable|string',
             'blocks.*.order_override' => 'nullable|integer',
             'blocks.*.visible_by_default_override' => 'nullable|boolean',
+            // NYE SYNLIGHETSFELTER
+            'blocks.*.show_icon' => 'nullable|boolean',
+            'blocks.*.show_label' => 'nullable|boolean',
+            'blocks.*.show_text' => 'nullable|boolean',
+            'blocks.*.show_tips' => 'nullable|boolean',
+            'blocks.*.show_severity' => 'nullable|boolean',
         ]);
 
         $sections = $request->input('sections', []);
@@ -187,10 +197,8 @@ class TemplateController extends Controller
                         'title_override' => $data['title_override'] ?? null,
                         'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
                         'show_title' => isset($data['show_title']) && $data['show_title'] == '1',
-
                     ]
                 );
-                
             }
 
             // Lagre BLOKKER
@@ -223,6 +231,7 @@ class TemplateController extends Controller
                         'tags_override' => null,
                         'order_override' => isset($data['order_override']) ? (int)$data['order_override'] : 0,
                         'visible_by_default_override' => isset($data['visible_by_default_override']) && $data['visible_by_default_override'] == '1' ? true : null,
+                        // NYE SYNLIGHETSFELTER
                         'show_icon' => isset($data['show_icon']) && $data['show_icon'] == '1',
                         'show_label' => isset($data['show_label']) && $data['show_label'] == '1',
                         'show_text' => isset($data['show_text']) && $data['show_text'] == '1',
